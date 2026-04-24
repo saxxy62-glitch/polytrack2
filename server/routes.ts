@@ -215,6 +215,9 @@ const SIGNAL_LEADERBOARD_SLICES: Array<[TimePeriod, OrderBy, Category]> = [
   ["MONTH", "VOL", "OVERALL"],
   ["ALL",   "PNL", "CRYPTO"],
   ["MONTH", "PNL", "POLITICS"],
+  // Weather specialists: automatedAItradingbot (#8 ALL), ColdMath (#2 MONTH), WeatherTraderBot (#12 ALL)
+  ["ALL",   "PNL", "WEATHER"],
+  ["MONTH", "PNL", "WEATHER"],
 ];
 
 async function bootstrap() {

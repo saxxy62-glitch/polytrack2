@@ -152,10 +152,10 @@ function WeatherBotBadge({ avgWeatherRatio }: { avgWeatherRatio: number | null |
   );
 }
 
-// ── Whale flag — avg trade >$5K + >50 trades ────────────────────────────────
+// ── Whale flag — avg trade >$10K + >50 trades ────────────────────────────────
 // High-volume players like elkmonkey: large trades AND many of them.
 function WhaleBadge({ avgTradeSize, totalTrades }: { avgTradeSize: number | null | undefined; totalTrades: number | null | undefined }) {
-  const isWhale = (avgTradeSize ?? 0) > 5_000 && (totalTrades ?? 0) > 50;
+  const isWhale = (avgTradeSize ?? 0) > 10_000 && (totalTrades ?? 0) > 50;
   if (!isWhale) return null;
   return (
     <span
