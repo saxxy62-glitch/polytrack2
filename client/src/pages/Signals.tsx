@@ -130,32 +130,29 @@ export default function Signals() {
     <div className="max-w-[1400px] mx-auto px-4 py-6">
       {/* Header */}
       <div className="mb-6">
-        <div className="flex items-center gap-3 mb-1">
+        <div className="flex items-center gap-3 mb-1 flex-wrap">
           <h1 className="text-lg font-bold text-foreground">Smart Money Signals</h1>
           <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-green/10 border border-green/20 text-[11px] text-green font-medium">
             <span className="w-1.5 h-1.5 rounded-full bg-green animate-pulse-live" />
             Live · 15s
           </span>
+          <span className="px-2 py-0.5 rounded-full bg-surface-2 border border-border text-[11px] font-mono text-muted-foreground">
+            Пул: {watcherCount > 0 ? watcherCount : "..."} кошельков
+          </span>
+          {highEvCount > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-cyan/10 border border-cyan/20 text-[11px] font-mono text-cyan">
+              EV≥ 0.3: {highEvCount}
+            </span>
+          )}
           {signalList.length > 0 && (
-            <span className="px-2 py-0.5 rounded-full bg-surface-2 border border-border text-[11px] text-muted-foreground font-mono">
-              {signalList.length} signals
+            <span className="px-2 py-0.5 rounded-full bg-yellow/10 border border-yellow/20 text-[11px] text-yellow font-mono font-semibold">
+              {signalList.length} сигналов
             </span>
           )}
         </div>
         <p className="text-xs text-muted-foreground">
-          Детектор накопления позиций.{" "}
-          Сигнал = первый вход от $1K или накопление (≤ 3 сделки, сумма {">"}$1K) на рынке 5–95¢.
+          Сигнал = первый вход от $1K или накопление (≤ 3 сделки, сумма {">"}$1K) на рынке 5–95¢, BUY only.
         </p>
-        {watcherCount > 0 && (
-          <div className="flex items-center gap-3 mt-2">
-            <span className="text-xs px-2 py-0.5 rounded bg-surface-2 border border-border font-mono text-muted-foreground">
-              Пул: <span className="text-foreground">{watcherCount}</span> кошельков
-            </span>
-            <span className="text-xs px-2 py-0.5 rounded bg-cyan/10 border border-cyan/20 font-mono text-cyan">
-              EV ≥ 0.3: <span className="font-bold">{highEvCount}</span> кандидатов
-            </span>
-          </div>
-        )}
       </div>
 
       {/* Filters */}
