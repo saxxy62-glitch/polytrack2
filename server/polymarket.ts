@@ -66,6 +66,8 @@ export interface WalletAggregate {
   markets: string[];
   topMarkets: { title: string; volume: number; count: number }[];
   pnlCurve: { timestamp: number; cumPnl: number; tradeCount: number }[];
+  lastTradeTimestamp: number;  // unix seconds
+  trades30d: number;           // trades in last 30 days
 }
 
 async function fetchJson(url: string): Promise<any> {
@@ -195,6 +197,14 @@ export function buildWalletFromLeaderboard(
   const name = trades[0]?.name || entry.userName || "";
   const profileImage = entry.profileImage || trades[0]?.profileImage || "";
 
+  // lastTradeTimestamp: newest trade in the recent trades feed
+  const now = Math.floor(Date.now() / 1000);
+  const cutoff30d = now - 30 * 86400;
+  const trades30d = trades.filter(t => (t.timestamp ?? 0) >= cutoff30d).length;
+  const lastTradeTimestamp = trades.length > 0
+    ? Math.max(...trades.map(t => t.timestamp ?? 0))
+    : 0;
+
   // Win/loss from closed positions (sorted by biggest wins, so partial — for display only)
   let winCount = 0;
   let lossCount = 0;
@@ -274,6 +284,8 @@ export function buildWalletFromLeaderboard(
     markets: [...categories],
     topMarkets,
     pnlCurve,
+    lastTradeTimestamp,
+    trades30d,
   };
 }
 

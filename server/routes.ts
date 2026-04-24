@@ -55,6 +55,8 @@ async function processLeaderboardWallet(
       lossCount: agg.lossCount,
       markets: JSON.stringify(agg.markets),
       topMarkets: JSON.stringify(agg.topMarkets),
+      lastTradeTimestamp: agg.lastTradeTimestamp,
+      trades30d: agg.trades30d,
     });
 
     // Store PNL curve points
@@ -189,6 +191,8 @@ async function bootstrapFromLiveTrades() {
             lossCount: agg.lossCount,
             markets: JSON.stringify(agg.markets),
             topMarkets: JSON.stringify(agg.topMarkets),
+            lastTradeTimestamp: agg.lastTradeTimestamp,
+            trades30d: agg.trades30d,
           });
           storage.clearPnlHistory(addr);
           agg.pnlCurve.forEach(pt =>
@@ -290,24 +294,29 @@ export function registerRoutes(httpServer: Server, app: Express) {
     if (needsFreshFetch) {
       try {
         const lb = await fetchLeaderboard(limit, timePeriod, orderBy, apiCategory);
-        const results = lb.map(entry => ({
-          address: entry.proxyWallet,
-          pseudonym: entry.userName,
-          name: entry.userName,
-          profileImage: entry.profileImage,
-          totalTrades: 0,
-          buyTrades: 0,
-          sellTrades: 0,
-          totalVolume: entry.vol,
-          totalPnl: entry.pnl,
-          winRate: 0,
-          avgEv: entry.vol > 0 ? entry.pnl / entry.vol : 0,
-          winCount: 0,
-          lossCount: 0,
-          markets: "[]",
-          topMarkets: "[]",
-          rank: entry.rank,
-        }));
+        const results = lb.map(entry => {
+          const cached = storage.getWallet(entry.proxyWallet);
+          return {
+            address: entry.proxyWallet,
+            pseudonym: entry.userName || cached?.pseudonym || "",
+            name: entry.userName || cached?.name || "",
+            profileImage: entry.profileImage || cached?.profileImage || "",
+            totalTrades: cached?.totalTrades ?? 0,
+            buyTrades: cached?.buyTrades ?? 0,
+            sellTrades: cached?.sellTrades ?? 0,
+            totalVolume: entry.vol,
+            totalPnl: entry.pnl,
+            winRate: cached?.winRate ?? 0,
+            avgEv: cached?.avgEv ?? (entry.vol > 0 ? entry.pnl / entry.vol : 0),
+            winCount: cached?.winCount ?? 0,
+            lossCount: cached?.lossCount ?? 0,
+            markets: cached?.markets ?? "[]",
+            topMarkets: cached?.topMarkets ?? "[]",
+            lastTradeTimestamp: cached?.lastTradeTimestamp ?? 0,
+            trades30d: cached?.trades30d ?? 0,
+            rank: entry.rank,
+          };
+        });
         return res.json(results.slice(0, limit));
       } catch (e) {
         console.error("Fresh leaderboard fetch error:", e);
@@ -357,6 +366,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
           lossCount: agg.lossCount,
           markets: JSON.stringify(agg.markets),
           topMarkets: JSON.stringify(agg.topMarkets),
+          lastTradeTimestamp: agg.lastTradeTimestamp,
+          trades30d: agg.trades30d,
         });
         storage.clearPnlHistory(address);
         agg.pnlCurve.forEach(pt =>
@@ -447,6 +458,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
         lossCount: agg.lossCount,
         markets: JSON.stringify(agg.markets),
         topMarkets: JSON.stringify(agg.topMarkets),
+        lastTradeTimestamp: agg.lastTradeTimestamp,
+        trades30d: agg.trades30d,
       });
     }
 

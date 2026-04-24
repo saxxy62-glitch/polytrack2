@@ -17,9 +17,12 @@ export const walletStats = sqliteTable("wallet_stats", {
   avgEv: real("avg_ev").default(0),
   winCount: integer("win_count").default(0),
   lossCount: integer("loss_count").default(0),
-  markets: text("markets").default("[]"), // JSON array of market categories
+  markets: text("markets").default("[]"),       // JSON array of market categories
   topMarkets: text("top_markets").default("[]"), // JSON array of top markets
   lastUpdated: integer("last_updated").default(0),
+  // New fields
+  lastTradeTimestamp: integer("last_trade_timestamp").default(0), // unix seconds of most recent trade
+  trades30d: integer("trades_30d").default(0),  // trade count in last 30 days
 });
 
 // Recent live trades for real-time feed
