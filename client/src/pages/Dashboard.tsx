@@ -353,7 +353,7 @@ export default function Dashboard() {
   const [minEv, setMinEv] = useState(0);
   const [minTrades, setMinTrades] = useState(0);
   const [category, setCategory] = useState("__all__");
-  const [timePeriod, setTimePeriod] = useState("ALL");
+  const [timePeriod, setTimePeriod] = useState("MONTH");
   const [apiCategory, setApiCategory] = useState("OVERALL");
   const [search, setSearch] = useState("");
   const [selectedWallet, setSelectedWallet] = useState<string | null>(null);
