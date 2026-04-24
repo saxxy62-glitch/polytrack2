@@ -97,7 +97,7 @@ function EmptySignals({ bootstrapDone }: { bootstrapDone: boolean }) {
           : "Дождитесь загрузки лидерборда — после этого детектор начнёт работу автоматически."}
       </p>
       <div className="mt-2 flex gap-3 text-xs text-muted-foreground">
-        <span className="px-2 py-1 rounded bg-surface-2 border border-border">EV ≥ 0.3</span>
+        <span className="px-2 py-1 rounded bg-surface-2 border border-border">ROI ≥ 3%</span>
         <span className="px-2 py-1 rounded bg-surface-2 border border-border">Сделка ≥ $1K</span>
         <span className="px-2 py-1 rounded bg-surface-2 border border-border">≤ 3 сделки на рынке</span>
         <span className="px-2 py-1 rounded bg-surface-2 border border-border">Цена 5–95¢</span>
@@ -110,7 +110,7 @@ function EmptySignals({ bootstrapDone }: { bootstrapDone: boolean }) {
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function Signals() {
   const [onlyNew, setOnlyNew] = useState(false);
-  const [minEv, setMinEv] = useState(0.3);
+  const [minEv, setMinEv] = useState(0.03);
   const [minSize, setMinSize] = useState(1_000);
 
   const { data: status } = useQuery<any>({ queryKey: ["/api/status"], refetchInterval: 3000 });
@@ -141,7 +141,7 @@ export default function Signals() {
           </span>
           {highEvCount > 0 && (
             <span className="px-2 py-0.5 rounded-full bg-cyan/10 border border-cyan/20 text-[11px] font-mono text-cyan">
-              EV≥ 0.3: {highEvCount}
+              ROI≥ 3%: {highEvCount}
             </span>
           )}
           {signalList.length > 0 && (
@@ -165,14 +165,14 @@ export default function Signals() {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground whitespace-nowrap">Мин. EV кошелька</span>
+          <span className="text-xs text-muted-foreground whitespace-nowrap">Мин. ROI (%)</span>
           <div className="w-28">
-            <Slider min={0} max={100} step={5}
+            <Slider min={0} max={30} step={1}
               value={[minEv * 100]}
               onValueChange={([v]: number[]) => setMinEv(v / 100)}
               className="cursor-pointer" />
           </div>
-          <span className="text-xs font-mono text-cyan w-8">{(minEv * 100).toFixed(0)}%</span>
+          <span className="text-xs font-mono text-cyan w-10">{(minEv * 100).toFixed(1)}% ROI</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -275,7 +275,7 @@ export default function Signals() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {[
             { icon: "👁", title: "Мониторинг", desc: "Каждые 15 сек проверяем Live Feed Polymarket — все новые сделки" },
-            { icon: "🔍", title: "Фильтрация", desc: `Оставляем только кошельки из пула ${watcherCount || 230}+ с историческим EV ≥ 0.3 (${highEvCount || "?"} кандидатов)` },
+            { icon: "🔍", title: "Фильтрация", desc: `Оставляем только кошельки из пула ${watcherCount || 230}+ с ROI ≥ 3% (${highEvCount || "?"} активных кандидатов)` },
             { icon: "📐", title: "Условия", desc: "BUY ≥ $1K, цена 5–95¢, не более 3 сделок на рынке (раннее = лучше)" },
             { icon: "🚨", title: "Сигнал", desc: "Алерт появляется мгновенно с размером, ценой и ссылкой на рынок" },
           ].map(s => (

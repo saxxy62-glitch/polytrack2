@@ -24,7 +24,10 @@ let topWalletSet = new Set<string>();
 const seenTxHashes = new Set<string>(); // dedup for signal detection
 
 // ─── Signal detection thresholds ─────────────────────────────────────────────
-const SIGNAL_MIN_EV = 0.3;          // wallet historical EV must be >= this
+const SIGNAL_MIN_EV = 0.03;         // wallet ROI (pnl/vol) must be >= this
+                                     // Note: avgEv = pnl/vol (ROI), not Kelly EV.
+                                     // 0.03 = 3% ROI — includes active traders like elkmonkey.
+                                     // 0.30 = 30% ROI — only pure arb bots, too restrictive.
 const SIGNAL_MIN_TRADE_USDC = 1_000; // minimum single trade size in USDC
 const SIGNAL_ACCUM_USDC = 1_000;     // minimum cumulative size to emit on trades 2–3
 const SIGNAL_MAX_TRADE_COUNT = 3;    // stop emitting after 3rd trade (position formed)
