@@ -24,10 +24,21 @@ let topWalletSet = new Set<string>();
 const seenTxHashes = new Set<string>(); // dedup for signal detection
 
 // ─── Signal detection thresholds ─────────────────────────────────────────────
-const SIGNAL_MIN_EV = 0.3;           // wallet historical EV must be >= this
-const SIGNAL_MIN_SIZE_USDC = 10_000; // single trade size in USDC
-const SIGNAL_PRICE_MIN = 0.05;       // exclude near-zero (already resolved)
-const SIGNAL_PRICE_MAX = 0.95;       // exclude near-certain
+const SIGNAL_MIN_EV = 0.3;          // wallet historical EV must be >= this
+const SIGNAL_MIN_TRADE_USDC = 1_000; // minimum single trade size in USDC
+const SIGNAL_ACCUM_USDC = 1_000;     // minimum cumulative size to emit on trades 2–3
+const SIGNAL_MAX_TRADE_COUNT = 3;    // stop emitting after 3rd trade (position formed)
+const SIGNAL_PRICE_MIN = 0.05;       // exclude near-certain NO (already resolved)
+const SIGNAL_PRICE_MAX = 0.95;       // exclude near-certain YES
+//
+// Detection logic:
+//   Trade 1 (isNew):  size >= $1K → always emit — early entry signal
+//   Trade 2–3:        cumulative size >= $1K → emit — confirms accumulation
+//   Trade 4+:         silent — position already formed, signal would be late
+//
+// Rationale: a single $1K trade can be a probe; three trades on the same
+// market totalling $1K+ is a clear accumulation pattern. Upper bound of 3
+// prevents noise from bots that trade the same market hundreds of times.
 
 function detectSignal(trade: RawTrade) {
   const addr = trade.proxyWallet;
@@ -40,9 +51,9 @@ function detectSignal(trade: RawTrade) {
   // Only BUY side — accumulation, not profit-taking
   if (trade.side !== "BUY") return;
 
-  // Size filter
+  // Single trade must be at least $1K (filters out dust / fee tests)
   const sizeUsdc = (trade.size ?? 0) * (trade.price ?? 0);
-  if (sizeUsdc < SIGNAL_MIN_SIZE_USDC) return;
+  if (sizeUsdc < SIGNAL_MIN_TRADE_USDC) return;
 
   // Price filter — not near-expiry or already decided
   const price = trade.price ?? 0;
@@ -54,9 +65,12 @@ function detectSignal(trade: RawTrade) {
   const isNew = storage.isNewMarketForWallet(addr, conditionId);
   const { totalSize, tradeCount } = storage.recordWalletMarket(addr, conditionId, sizeUsdc);
 
-  // Emit signal if: new market for this wallet, OR cumulative size crosses $25K
-  const shouldEmit = isNew || (totalSize >= 25_000 && tradeCount <= 3);
-  if (!shouldEmit) return;
+  // Determine whether to emit:
+  //   - Trade 1 (isNew): always emit if size >= $1K (caught above)
+  //   - Trades 2–3: emit if cumulative total >= $1K (confirms intent)
+  //   - Trade 4+: skip — too late, position already accumulating for a while
+  if (tradeCount > SIGNAL_MAX_TRADE_COUNT) return;
+  if (!isNew && totalSize < SIGNAL_ACCUM_USDC) return; // trades 2–3 but total still tiny
 
   storage.insertSignal({
     proxyWallet: addr,
@@ -75,7 +89,8 @@ function detectSignal(trade: RawTrade) {
     transactionHash: trade.transactionHash ?? "",
   });
 
-  console.log(`[Signal] ${wallet.pseudonym || addr.slice(0,8)} → "${trade.title?.slice(0,40)}" @${price.toFixed(2)} $${sizeUsdc.toFixed(0)} (${isNew ? "NEW" : "accum"})`);
+  const tag = isNew ? "ENTRY" : `ACCUM #${tradeCount}`;
+  console.log(`[Signal] ${wallet.pseudonym || addr.slice(0,8)} → "${trade.title?.slice(0,40)}" @${price.toFixed(2)} $${sizeUsdc.toFixed(0)} total=$${totalSize.toFixed(0)} (${tag})`);
 }
 
 // ─── Process a single wallet from leaderboard entry ───────────────────────────

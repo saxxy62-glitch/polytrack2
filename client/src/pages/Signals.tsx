@@ -93,12 +93,13 @@ function EmptySignals({ bootstrapDone }: { bootstrapDone: boolean }) {
       </h3>
       <p className="text-xs text-muted-foreground max-w-sm">
         {bootstrapDone
-          ? "Система мониторит Live Feed в реальном времени. Сигнал появится когда кошелёк с EV ≥ 0.3 откроет новую позицию от $10K на рынке с ценой 5–95¢."
+          ? "Система мониторит Live Feed в реальном времени. Сигнал = первый вход от $1K, или накопление (до 3 сделок суммарно > $1K) на рынке 5–95¢."
           : "Дождитесь загрузки лидерборда — после этого детектор начнёт работу автоматически."}
       </p>
       <div className="mt-2 flex gap-3 text-xs text-muted-foreground">
         <span className="px-2 py-1 rounded bg-surface-2 border border-border">EV ≥ 0.3</span>
-        <span className="px-2 py-1 rounded bg-surface-2 border border-border">Сделка ≥ $10K</span>
+        <span className="px-2 py-1 rounded bg-surface-2 border border-border">Сделка ≥ $1K</span>
+        <span className="px-2 py-1 rounded bg-surface-2 border border-border">≤ 3 сделки на рынке</span>
         <span className="px-2 py-1 rounded bg-surface-2 border border-border">Цена 5–95¢</span>
         <span className="px-2 py-1 rounded bg-surface-2 border border-border">Только BUY</span>
       </div>
@@ -110,7 +111,7 @@ function EmptySignals({ bootstrapDone }: { bootstrapDone: boolean }) {
 export default function Signals() {
   const [onlyNew, setOnlyNew] = useState(false);
   const [minEv, setMinEv] = useState(0.3);
-  const [minSize, setMinSize] = useState(10_000);
+  const [minSize, setMinSize] = useState(1_000);
 
   const { data: status } = useQuery<any>({ queryKey: ["/api/status"], refetchInterval: 3000 });
 
@@ -180,7 +181,7 @@ export default function Signals() {
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground whitespace-nowrap">Мин. размер</span>
           <div className="w-28">
-            <Slider min={0} max={100_000} step={5_000}
+            <Slider min={0} max={20_000} step={500}
               value={[minSize]}
               onValueChange={([v]: number[]) => setMinSize(v)}
               className="cursor-pointer" />
@@ -278,7 +279,7 @@ export default function Signals() {
           {[
             { icon: "👁", title: "Мониторинг", desc: "Каждые 15 сек проверяем Live Feed Polymarket — все новые сделки" },
             { icon: "🔍", title: "Фильтрация", desc: `Оставляем только кошельки из пула ${watcherCount || 230}+ с историческим EV ≥ 0.3 (${highEvCount || "?"} кандидатов)` },
-            { icon: "📐", title: "Условия", desc: "BUY ≥ $10K, цена 5–95¢ (не near-expiry), первый вход в этот рынок" },
+            { icon: "📐", title: "Условия", desc: "BUY ≥ $1K, цена 5–95¢, не более 3 сделок на рынке (раннее = лучше)" },
             { icon: "🚨", title: "Сигнал", desc: "Алерт появляется мгновенно с размером, ценой и ссылкой на рынок" },
           ].map(s => (
             <div key={s.title} className="flex gap-2">
