@@ -1,0 +1,6 @@
+node_modules/
+dist/
+polymarket-data.json
+polymarket.db
+.env
+*.log
