@@ -169,18 +169,43 @@ async function processLeaderboardWallet(
 }
 
 // ─── Bootstrap — load top wallets from official leaderboard ───────────────────
+//
+// Two-phase approach:
+//   Phase 1 (dashboard): top-50 ALL/PNL/OVERALL — fully processed with trade
+//                        history, PNL curve, etc. These appear in the Dashboard table.
+//   Phase 2 (signals):   ~150 additional wallets from 5 more leaderboard slices,
+//                        processed in background after dashboard is ready.
+//                        These are signal-monitor-only: stored in storage so
+//                        detectSignal() can look them up, but NOT shown on Dashboard
+//                        (Dashboard caps at top-50 by default).
+//
+// Why multiple slices instead of limit=200?
+//   Polymarket API hard-caps leaderboard at 50 records regardless of limit param.
+//   Slicing across periods/categories gives ~200 unique wallets total.
+//   Chosen slices ordered by marginal new-wallet yield (measured empirically):
+//     ALL/PNL/OVERALL (+50), ALL/VOL/OVERALL (+35), MONTH/PNL/OVERALL (+34),
+//     MONTH/VOL/OVERALL (+26), ALL/PNL/CRYPTO (+40), MONTH/PNL/POLITICS (+39)
+//   ≈ 224 unique wallets — well above the 200 target.
+
+const SIGNAL_LEADERBOARD_SLICES: Array<[TimePeriod, OrderBy, Category]> = [
+  ["ALL",   "VOL", "OVERALL"],
+  ["MONTH", "PNL", "OVERALL"],
+  ["MONTH", "VOL", "OVERALL"],
+  ["ALL",   "PNL", "CRYPTO"],
+  ["MONTH", "PNL", "POLITICS"],
+];
+
 async function bootstrap() {
   if (isBootstrapping || bootstrapDone) return;
   isBootstrapping = true;
   console.log("[Bootstrap] Fetching official Polymarket leaderboard...");
 
   try {
-    // Fetch top 100 by PNL (all time) — official Polymarket data
-    const leaderboard = await fetchLeaderboard(100, "ALL", "PNL", "OVERALL");
-    console.log(`[Bootstrap] Got ${leaderboard.length} entries from leaderboard`);
+    // Phase 1: top-50 ALL/PNL — these go into the Dashboard table
+    const leaderboard = await fetchLeaderboard(50, "ALL", "PNL", "OVERALL");
+    console.log(`[Bootstrap] Got ${leaderboard.length} dashboard entries`);
 
     if (leaderboard.length === 0) {
-      // Fallback: load from recent live trades if leaderboard unavailable
       console.log("[Bootstrap] Leaderboard empty, falling back to live trades...");
       await bootstrapFromLiveTrades();
       return;
@@ -189,30 +214,85 @@ async function bootstrap() {
     bootstrapTotal = leaderboard.length;
     bootstrapProgress = 0;
 
-    // Store live trades from global feed first (for live feed page)
+    // Seed live feed
     try {
       const liveTrades = await fetchLatestTrades(200);
       storeLiveTrades(liveTrades, new Set());
     } catch (_) {}
 
-    // Process wallets in batches of 5
+    // Process Phase 1 wallets in batches of 5
     const batchSize = 5;
     for (let i = 0; i < leaderboard.length; i += batchSize) {
       const batch = leaderboard.slice(i, i + batchSize);
       await Promise.all(batch.map(entry => processLeaderboardWallet(entry)));
       bootstrapProgress += batch.length;
-      console.log(`[Bootstrap] Progress: ${bootstrapProgress}/${bootstrapTotal}`);
+      console.log(`[Bootstrap] Phase 1 progress: ${bootstrapProgress}/${bootstrapTotal}`);
     }
 
-    // Mark all leaderboard wallets as top wallets for live feed
     leaderboard.forEach(e => topWalletSet.add(e.proxyWallet));
     bootstrapDone = true;
-    console.log("[Bootstrap] Done — leaderboard data loaded with official PNL.");
+    console.log("[Bootstrap] Phase 1 done — dashboard ready.");
+
+    // Phase 2: additional slices for Signals monitoring (runs in background,
+    // dashboard is already usable while this loads)
+    bootstrapSignalWatchers().catch(e =>
+      console.error("[Bootstrap] Phase 2 error:", e)
+    );
+
   } catch (e) {
     console.error("[Bootstrap] Error:", e);
   } finally {
     isBootstrapping = false;
   }
+}
+
+// Phase 2: load ~150 extra wallets from additional leaderboard slices.
+// These are stored in storage (for detectSignal lookups) but never shown
+// in the Dashboard table — getTopWallets() always sorts by PNL so they
+// naturally fall below the top-50 cutoff in the frontend.
+async function bootstrapSignalWatchers() {
+  console.log("[Signals] Starting Phase 2 — loading extended watcher pool...");
+
+  // Collect leaderboard entries from all extra slices, dedup by address
+  const extraEntries = new Map<string, Awaited<ReturnType<typeof fetchLeaderboard>>[number]>();
+
+  // Fetch all slices in parallel
+  const sliceResults = await Promise.allSettled(
+    SIGNAL_LEADERBOARD_SLICES.map(([period, order, cat]) =>
+      fetchLeaderboard(50, period, order, cat)
+    )
+  );
+
+  for (const result of sliceResults) {
+    if (result.status !== "fulfilled") continue;
+    for (const entry of result.value) {
+      if (!entry.proxyWallet) continue;
+      // Skip wallets already loaded in Phase 1 (already in storage + topWalletSet)
+      if (topWalletSet.has(entry.proxyWallet)) continue;
+      // Keep the entry with higher PNL if seen in multiple slices
+      const existing = extraEntries.get(entry.proxyWallet);
+      if (!existing || entry.pnl > existing.pnl) {
+        extraEntries.set(entry.proxyWallet, entry);
+      }
+    }
+  }
+
+  const entries = [...extraEntries.values()];
+  console.log(`[Signals] Phase 2: ${entries.length} additional wallets to load`);
+
+  // Process in batches of 5 — same as Phase 1 but lower priority
+  const batchSize = 5;
+  for (let i = 0; i < entries.length; i += batchSize) {
+    const batch = entries.slice(i, i + batchSize);
+    await Promise.all(batch.map(entry => processLeaderboardWallet(entry)));
+    // Mark as signal watchers in topWalletSet so live feed highlights them
+    batch.forEach(e => topWalletSet.add(e.proxyWallet));
+    console.log(`[Signals] Phase 2 progress: ${Math.min(i + batchSize, entries.length)}/${entries.length}`);
+    // Small pause between batches to avoid hammering the API
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  console.log(`[Signals] Phase 2 done — monitoring ${topWalletSet.size} wallets total for accumulation signals.`);
 }
 
 // Fallback bootstrap from live trades when leaderboard is unreachable
@@ -352,6 +432,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       bootstrapProgress,
       bootstrapTotal,
       walletCount: storage.getAllWallets().length,
+      signalWatcherCount: topWalletSet.size,  // includes Phase 2 extended pool
       tradeCount: storage.getTradeCount(),
     });
   });

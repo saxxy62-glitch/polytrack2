@@ -93,7 +93,7 @@ function EmptySignals({ bootstrapDone }: { bootstrapDone: boolean }) {
       </h3>
       <p className="text-xs text-muted-foreground max-w-sm">
         {bootstrapDone
-          ? "Система мониторит Live Feed в реальном времени. Сигнал появится когда кошелёк из топ-50 с EV ≥ 0.3 откроет новую позицию от $10K на рынке с ценой 5–95¢."
+          ? "Система мониторит Live Feed в реальном времени. Сигнал появится когда кошелёк с EV ≥ 0.3 откроет новую позицию от $10K на рынке с ценой 5–95¢."
           : "Дождитесь загрузки лидерборда — после этого детектор начнёт работу автоматически."}
       </p>
       <div className="mt-2 flex gap-3 text-xs text-muted-foreground">
@@ -121,6 +121,7 @@ export default function Signals() {
   });
 
   const bootstrapDone = (status as any)?.bootstrapDone ?? false;
+  const watcherCount = (status as any)?.signalWatcherCount ?? 0;
   const signalList = signals ?? [];
 
   return (
@@ -140,7 +141,13 @@ export default function Signals() {
           )}
         </div>
         <p className="text-xs text-muted-foreground">
-          Детектор накопления позиций топ-кошельков. Сигнал = кошелёк с историческим EV ≥ 0.3 открывает новую позицию ≥ $10K на рынке с ценой 5–95¢.
+          Детектор накопления позиций расширенного пула кошельков.
+          Сигнал = кошелёк с EV ≥ 0.3 открывает позицию ≥ $10K на рынке с ценой 5–95¢.{" "}
+          {watcherCount > 0 && (
+            <span className="text-cyan font-mono">
+              Мониторинг: {watcherCount} кошельков
+            </span>
+          )}
         </p>
       </div>
 
