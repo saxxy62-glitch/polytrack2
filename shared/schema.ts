@@ -51,6 +51,29 @@ export const pnlHistory = sqliteTable("pnl_history", {
   tradeCount: integer("trade_count"),
 });
 
+// Signal alerts — накопление smart money
+export const signals = sqliteTable("signals", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  proxyWallet: text("proxy_wallet"),
+  walletName: text("wallet_name"),
+  conditionId: text("condition_id"),
+  marketTitle: text("market_title"),
+  outcome: text("outcome"),
+  price: real("price"),           // entry price (0-1)
+  size: real("size"),             // USDC size
+  totalSize: real("total_size"),  // cumulative size on this market
+  tradeCount: integer("trade_count").default(1), // trades on this market so far
+  isNew: integer("is_new").default(1),   // 1 = first time this wallet trades this market
+  walletEv: real("wallet_ev"),
+  slug: text("slug"),
+  detectedAt: integer("detected_at"),  // unix ms
+  transactionHash: text("transaction_hash"),
+});
+
+export const insertSignalSchema = createInsertSchema(signals).omit({ id: true });
+export type Signal = typeof signals.$inferSelect;
+export type InsertSignal = z.infer<typeof insertSignalSchema>;
+
 export const insertWalletStatsSchema = createInsertSchema(walletStats).omit({ lastUpdated: true });
 export const insertLiveTradeSchema = createInsertSchema(liveTrades).omit({ id: true });
 export const insertPnlHistorySchema = createInsertSchema(pnlHistory).omit({ id: true });

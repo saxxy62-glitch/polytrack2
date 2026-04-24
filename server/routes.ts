@@ -21,6 +21,62 @@ let bootstrapProgress = 0;
 let bootstrapTotal = 0;
 let lastLiveUpdate = 0;
 let topWalletSet = new Set<string>();
+const seenTxHashes = new Set<string>(); // dedup for signal detection
+
+// ─── Signal detection thresholds ─────────────────────────────────────────────
+const SIGNAL_MIN_EV = 0.3;           // wallet historical EV must be >= this
+const SIGNAL_MIN_SIZE_USDC = 10_000; // single trade size in USDC
+const SIGNAL_PRICE_MIN = 0.05;       // exclude near-zero (already resolved)
+const SIGNAL_PRICE_MAX = 0.95;       // exclude near-certain
+
+function detectSignal(trade: RawTrade) {
+  const addr = trade.proxyWallet;
+  const wallet = storage.getWallet(addr);
+
+  // Only watch wallets we know (from leaderboard) with good EV
+  if (!wallet) return;
+  if ((wallet.avgEv ?? 0) < SIGNAL_MIN_EV) return;
+
+  // Only BUY side — accumulation, not profit-taking
+  if (trade.side !== "BUY") return;
+
+  // Size filter
+  const sizeUsdc = (trade.size ?? 0) * (trade.price ?? 0);
+  if (sizeUsdc < SIGNAL_MIN_SIZE_USDC) return;
+
+  // Price filter — not near-expiry or already decided
+  const price = trade.price ?? 0;
+  if (price < SIGNAL_PRICE_MIN || price > SIGNAL_PRICE_MAX) return;
+
+  const conditionId = trade.conditionId ?? trade.slug ?? trade.title ?? "";
+  if (!conditionId) return;
+
+  const isNew = storage.isNewMarketForWallet(addr, conditionId);
+  const { totalSize, tradeCount } = storage.recordWalletMarket(addr, conditionId, sizeUsdc);
+
+  // Emit signal if: new market for this wallet, OR cumulative size crosses $25K
+  const shouldEmit = isNew || (totalSize >= 25_000 && tradeCount <= 3);
+  if (!shouldEmit) return;
+
+  storage.insertSignal({
+    proxyWallet: addr,
+    walletName: wallet.pseudonym || wallet.name || addr.slice(0, 10),
+    conditionId,
+    marketTitle: trade.title ?? "",
+    outcome: trade.outcome ?? "",
+    price,
+    size: sizeUsdc,
+    totalSize,
+    tradeCount,
+    isNew: isNew ? 1 : 0,
+    walletEv: wallet.avgEv ?? 0,
+    slug: trade.slug ?? "",
+    detectedAt: Date.now(),
+    transactionHash: trade.transactionHash ?? "",
+  });
+
+  console.log(`[Signal] ${wallet.pseudonym || addr.slice(0,8)} → "${trade.title?.slice(0,40)}" @${price.toFixed(2)} $${sizeUsdc.toFixed(0)} (${isNew ? "NEW" : "accum"})`);
+}
 
 // ─── Process a single wallet from leaderboard entry ───────────────────────────
 async function processLeaderboardWallet(
@@ -219,8 +275,9 @@ async function bootstrapFromLiveTrades() {
 
 function storeLiveTrades(trades: RawTrade[], seen: Set<string>) {
   for (const t of trades) {
-    if (!seen.has(t.transactionHash)) {
-      seen.add(t.transactionHash);
+    const hash = t.transactionHash || `${t.proxyWallet}-${t.timestamp}-${t.size}`;
+    if (!seen.has(hash)) {
+      seen.add(hash);
       try {
         storage.insertTrade({
           proxyWallet: t.proxyWallet,
@@ -233,10 +290,20 @@ function storeLiveTrades(trades: RawTrade[], seen: Set<string>) {
           slug: t.slug,
           name: t.name,
           pseudonym: t.pseudonym,
-          transactionHash: t.transactionHash,
+          transactionHash: hash,
           isTopWallet: topWalletSet.has(t.proxyWallet) ? 1 : 0,
         });
       } catch (_) {}
+      // Run signal detection on every new trade
+      if (!seenTxHashes.has(hash)) {
+        seenTxHashes.add(hash);
+        if (seenTxHashes.size > 10_000) {
+          // Prune oldest entries to avoid unbounded growth
+          const arr = [...seenTxHashes];
+          arr.slice(0, 5_000).forEach(h => seenTxHashes.delete(h));
+        }
+        try { detectSignal(t); } catch (_) {}
+      }
     }
   }
 }
@@ -465,6 +532,26 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
     const wallet = storage.getWallet(address);
     res.json(wallet ?? { error: "Not found" });
+  });
+
+  // GET /api/signals?limit=50&onlyNew=true&minEv=0.3&minSize=10000
+  app.get("/api/signals", (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const onlyNew = req.query.onlyNew === "true";
+    const minEv = parseFloat(req.query.minEv as string) || 0;
+    const minSize = parseFloat(req.query.minSize as string) || 0;
+
+    let sigs = storage.getSignals(200);
+    if (onlyNew) sigs = sigs.filter(s => s.isNew === 1);
+    if (minEv > 0) sigs = sigs.filter(s => (s.walletEv ?? 0) >= minEv);
+    if (minSize > 0) sigs = sigs.filter(s => (s.size ?? 0) >= minSize);
+
+    res.json(sigs.slice(0, limit));
+  });
+
+  // GET /api/signals/count
+  app.get("/api/signals/count", (_req, res) => {
+    res.json({ count: storage.getSignalCount() });
   });
 
   // GET /api/leaderboard — proxy to official leaderboard (no caching)

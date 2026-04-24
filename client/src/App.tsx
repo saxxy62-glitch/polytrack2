@@ -3,9 +3,11 @@ import { useHashLocation } from "wouter/use-hash-location";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
+import { useQuery } from "@tanstack/react-query";
 import Dashboard from "@/pages/Dashboard";
 import WalletDetail from "@/pages/WalletDetail";
 import LiveFeed from "@/pages/LiveFeed";
+import Signals from "@/pages/Signals";
 import NotFound from "@/pages/not-found";
 
 function Logo() {
@@ -20,6 +22,25 @@ function Logo() {
       <circle cx="11" cy="26" r="1.5" fill="hsl(var(--green))"/>
       <circle cx="16" cy="26" r="1.5" fill="hsl(var(--yellow))"/>
     </svg>
+  );
+}
+
+// Live signal count badge in nav
+function SignalsNavItem() {
+  const { data } = useQuery<{ count: number }>({
+    queryKey: ["/api/signals/count"],
+    refetchInterval: 15000,
+  });
+  const count = data?.count ?? 0;
+  return (
+    <span className="flex items-center gap-1.5">
+      Signals
+      {count > 0 && (
+        <span className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-yellow text-background text-[9px] font-bold">
+          {count > 99 ? "99+" : count}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -54,6 +75,9 @@ function Nav() {
 
         <div className="flex items-center gap-1">
           <NavLink href="/">Dashboard</NavLink>
+          <NavLink href="/signals">
+            <SignalsNavItem />
+          </NavLink>
           <NavLink href="/live">Live Feed</NavLink>
         </div>
 
@@ -76,6 +100,7 @@ function AppInner() {
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/wallet/:address" component={WalletDetail} />
+          <Route path="/signals" component={Signals} />
           <Route path="/live" component={LiveFeed} />
           <Route component={NotFound} />
         </Switch>
