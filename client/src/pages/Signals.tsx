@@ -122,6 +122,7 @@ export default function Signals() {
 
   const bootstrapDone = (status as any)?.bootstrapDone ?? false;
   const watcherCount = (status as any)?.signalWatcherCount ?? 0;
+  const highEvCount = (status as any)?.highEvWatcherCount ?? 0;
   const signalList = signals ?? [];
 
   return (
@@ -141,14 +142,19 @@ export default function Signals() {
           )}
         </div>
         <p className="text-xs text-muted-foreground">
-          Детектор накопления позиций расширенного пула кошельков.
-          Сигнал = кошелёк с EV ≥ 0.3 открывает позицию ≥ $10K на рынке с ценой 5–95¢.{" "}
-          {watcherCount > 0 && (
-            <span className="text-cyan font-mono">
-              Мониторинг: {watcherCount} кошельков
-            </span>
-          )}
+          Детектор накопления позиций.{" "}
+          Сигнал = кошелёк с EV ≥ 0.3 открывает позицию ≥ $10K на рынке с ценой 5–95¢.
         </p>
+        {watcherCount > 0 && (
+          <div className="flex items-center gap-3 mt-2">
+            <span className="text-xs px-2 py-0.5 rounded bg-surface-2 border border-border font-mono text-muted-foreground">
+              Пул: <span className="text-foreground">{watcherCount}</span> кошельков
+            </span>
+            <span className="text-xs px-2 py-0.5 rounded bg-cyan/10 border border-cyan/20 font-mono text-cyan">
+              EV ≥ 0.3: <span className="font-bold">{highEvCount}</span> кандидатов
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Filters */}
@@ -271,7 +277,7 @@ export default function Signals() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {[
             { icon: "👁", title: "Мониторинг", desc: "Каждые 15 сек проверяем Live Feed Polymarket — все новые сделки" },
-            { icon: "🔍", title: "Фильтрация", desc: "Оставляем только кошельки из топ-50 с историческим EV ≥ 0.3" },
+            { icon: "🔍", title: "Фильтрация", desc: `Оставляем только кошельки из пула ${watcherCount || 230}+ с историческим EV ≥ 0.3 (${highEvCount || "?"} кандидатов)` },
             { icon: "📐", title: "Условия", desc: "BUY ≥ $10K, цена 5–95¢ (не near-expiry), первый вход в этот рынок" },
             { icon: "🚨", title: "Сигнал", desc: "Алерт появляется мгновенно с размером, ценой и ссылкой на рынок" },
           ].map(s => (

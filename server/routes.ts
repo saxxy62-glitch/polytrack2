@@ -426,13 +426,19 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // GET /api/status
   app.get("/api/status", (_req, res) => {
+    const allWallets = storage.getAllWallets();
+    // High-EV watchers: wallets in the signal pool that actually pass EV threshold
+    const highEvWatcherCount = allWallets.filter(
+      w => topWalletSet.has(w.address) && (w.avgEv ?? 0) >= SIGNAL_MIN_EV
+    ).length;
     res.json({
       bootstrapDone,
       isBootstrapping,
       bootstrapProgress,
       bootstrapTotal,
-      walletCount: storage.getAllWallets().length,
-      signalWatcherCount: topWalletSet.size,  // includes Phase 2 extended pool
+      walletCount: allWallets.length,
+      signalWatcherCount: topWalletSet.size,   // total pool (Phase 1 + Phase 2)
+      highEvWatcherCount,                       // subset with EV >= 0.3 (real signal candidates)
       tradeCount: storage.getTradeCount(),
     });
   });
