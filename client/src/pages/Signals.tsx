@@ -24,8 +24,8 @@ function timeAgo(ms: number | null | undefined): string {
 }
 
 function StrengthBar({ totalSize }: { totalSize: number }) {
-  // Visual bar: $10K = min, $100K+ = full
-  const pct = Math.min(100, ((totalSize - 10_000) / 90_000) * 100);
+  // Visual bar: $1K = min, $20K+ = full
+  const pct = Math.min(100, ((totalSize - 1_000) / 19_000) * 100);
   const color = pct >= 66 ? "bg-green" : pct >= 33 ? "bg-yellow" : "bg-cyan";
   return (
     <div className="w-24 h-1.5 bg-surface-3 rounded-full overflow-hidden">
@@ -144,7 +144,7 @@ export default function Signals() {
         </div>
         <p className="text-xs text-muted-foreground">
           Детектор накопления позиций.{" "}
-          Сигнал = кошелёк с EV ≥ 0.3 открывает позицию ≥ $10K на рынке с ценой 5–95¢.
+          Сигнал = первый вход от $1K или накопление (≤ 3 сделки > $1K суммарно) на рынке 5–95¢.
         </p>
         {watcherCount > 0 && (
           <div className="flex items-center gap-3 mt-2">
