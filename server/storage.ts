@@ -68,6 +68,9 @@ export interface IStorage {
   // Signal methods
   isNewMarketForWallet(address: string, conditionId: string): boolean;
   recordWalletMarket(address: string, conditionId: string, size: number): { totalSize: number; tradeCount: number };
+  // Seed historical markets from bootstrap — marks conditionIds as "already seen"
+  // so they are NOT flagged as new entries when detected in the live feed
+  seedWalletMarkets(address: string, conditionIds: string[]): void;
   insertSignal(signal: Omit<Signal, "id">): Signal;
   getSignals(limit: number): Signal[];
   getSignalCount(): number;
@@ -124,6 +127,25 @@ export const storage: IStorage = {
   clearPnlHistory(address) { db.pnlHistory[address] = []; },
 
   // ── Signal methods ──────────────────────────────────────────────────────────
+
+  seedWalletMarkets(address, conditionIds) {
+    // Bulk-initialise the "seen" set from historical trade data loaded at bootstrap.
+    // We only mark them as seen — we do NOT touch size/count accumulators so that
+    // any future trade on the same market will be correctly classified as
+    // "accumulating" (not "new") and use the real live-feed running totals.
+    if (!db.walletMarkets[address]) db.walletMarkets[address] = [];
+    const seen = new Set(db.walletMarkets[address]);
+    for (const cid of conditionIds) {
+      if (cid && !seen.has(cid)) {
+        db.walletMarkets[address].push(cid);
+        seen.add(cid);
+      }
+    }
+    // Cap to last 2000 entries (vs 500 before — history can be large)
+    if (db.walletMarkets[address].length > 2000) {
+      db.walletMarkets[address] = db.walletMarkets[address].slice(-2000);
+    }
+  },
 
   isNewMarketForWallet(address, conditionId) {
     const seen = db.walletMarkets[address] ?? [];

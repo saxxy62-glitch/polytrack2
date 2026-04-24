@@ -126,6 +126,20 @@ async function processLeaderboardWallet(
       });
     });
 
+    // ── Seed walletMarkets with full trade history ──────────────────────────
+    // This prevents false "First Entry" signals after server restarts.
+    // We use ALL 500 fetched trades (not just topMarkets) so every conditionId
+    // the wallet has ever traded is marked as "already seen" before the live
+    // feed starts. recordWalletMarket() handles the live running totals.
+    // Collect conditionIds from both trades AND closed positions — closed positions
+    // cover markets not in the last 500 trades (e.g. older positions sorted by PNL).
+    const historicalConditionIds = [
+      ...trades.map(t => t.conditionId),
+      ...closedPositions.map(p => p.conditionId),
+    ].filter(Boolean);
+    storage.seedWalletMarkets(address, historicalConditionIds);
+    console.log(`[Bootstrap] Seeded ${new Set(historicalConditionIds).size} unique markets for ${address.slice(0, 8)} (from ${trades.length} trades + ${closedPositions.length} closed pos)`);
+
     // Store recent trades for live feed
     const seen = new Set<string>();
     for (const t of trades.slice(0, 50)) {
