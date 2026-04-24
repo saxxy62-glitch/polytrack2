@@ -25,6 +25,8 @@ export const walletStats = sqliteTable("wallet_stats", {
   trades30d: integer("trades_30d").default(0),  // trade count in last 30 days
   avgBuyPrice: real("avg_buy_price").default(0), // volume-weighted avg BUY price; >0.90 + WR>95% = near-expiry arb
   avgTradeSize: real("avg_trade_size").default(0), // avg USDC per trade; >$500 + <20 trades = low-liq sniper
+  avgWeatherRatio: real("avg_weather_ratio").default(0), // fraction of trades on weather markets; >0.5 = weather bot
+  avgUpDownRatio: real("avg_updown_ratio").default(0),   // fraction of trades on Up/Down crypto; >0.6 = crypto scalper
 });
 
 // Recent live trades for real-time feed

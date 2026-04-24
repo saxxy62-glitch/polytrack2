@@ -94,18 +94,60 @@ function LastTradeCell({ ts }: { ts: number | null | undefined }) {
   );
 }
 
-// ── Near-expiry arb flag — WR >95% + avgBuyPrice >0.90 ──────────────────────
-// These wallets enter at $0.95–0.99 on near-resolved markets (e.g. kch123 Sports arb).
-// High win rate comes from certainty, not edge — signals are not copyable.
-function NearExpiryArbBadge({ winRate, avgBuyPrice }: { winRate: number | null | undefined; avgBuyPrice: number | null | undefined }) {
-  const isArb = (winRate ?? 0) > 0.95 && (avgBuyPrice ?? 0) > 0.90;
-  if (!isArb) return null;
+// ── Near-expiry arb flag ───────────────────────────────────────────────
+// Classic arb: WR>95% + avg entry >0.90 (kch123, sports arb)
+// OR scalper arb: avg entry >0.85 + tiny ROI <2% (Sharky-type, crypto Up/Down)
+function NearExpiryArbBadge({ winRate, avgBuyPrice, avgEv }: {
+  winRate: number | null | undefined;
+  avgBuyPrice: number | null | undefined;
+  avgEv: number | null | undefined;
+}) {
+  const classicArb = (winRate ?? 0) > 0.95 && (avgBuyPrice ?? 0) > 0.90;
+  const scalperArb = (avgBuyPrice ?? 0) > 0.85 && (avgEv ?? 1) < 0.02;
+  if (!classicArb && !scalperArb) return null;
+  const reason = classicArb
+    ? `WR ${((winRate ?? 0) * 100).toFixed(0)}% + avg entry ¢${((avgBuyPrice ?? 0) * 100).toFixed(0)}`
+    : `avg entry ¢${((avgBuyPrice ?? 0) * 100).toFixed(0)} + ROI ${((avgEv ?? 0) * 100).toFixed(1)}%`;
   return (
     <span
-      title={`Win rate ${((winRate ?? 0) * 100).toFixed(0)}% + avg entry ¢${((avgBuyPrice ?? 0) * 100).toFixed(0)} — likely near-expiry arbitrage, not predictive edge`}
+      title={`${reason} — near-expiry arbitrage, not predictive edge`}
       className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-orange/10 text-orange border-orange/30 ml-1 cursor-help"
     >
       ⚠️ near-expiry arb
+    </span>
+  );
+}
+
+// ── Crypto scalper flag — >60% Up/Down intraday trades + avgBuyPrice >0.90 ─────────
+// Sharky-type bots: scan BTC/ETH/SOL 1h price markets, buy near-certain outcome
+function CryptoScalperBadge({ avgUpDownRatio, avgBuyPrice }: {
+  avgUpDownRatio: number | null | undefined;
+  avgBuyPrice: number | null | undefined;
+}) {
+  const isScalper = (avgUpDownRatio ?? 0) > 0.60 && (avgBuyPrice ?? 0) > 0.90;
+  if (!isScalper) return null;
+  return (
+    <span
+      title={`${((avgUpDownRatio ?? 0) * 100).toFixed(0)}% of trades on Up/Down crypto markets @ avg ¢${((avgBuyPrice ?? 0) * 100).toFixed(0)} — intraday crypto scalper bot`}
+      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-red/10 text-red border-red/20 ml-1 cursor-help"
+    >
+      🤖 crypto scalper
+    </span>
+  );
+}
+
+// ── Weather bot flag — >50% trades on weather/temperature markets ──────────────
+// automatedaitradingbot-type: buys YES at 5¢ on temperature buckets using met forecasts
+// Reproducible edge, but strategy is domain-specific (needs weather data pipeline)
+function WeatherBotBadge({ avgWeatherRatio }: { avgWeatherRatio: number | null | undefined }) {
+  const isWeather = (avgWeatherRatio ?? 0) > 0.50;
+  if (!isWeather) return null;
+  return (
+    <span
+      title={`${((avgWeatherRatio ?? 0) * 100).toFixed(0)}% of trades on weather/temperature markets — weather-data bot (reproducible edge, requires met pipeline)`}
+      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-cyan/10 text-cyan border-cyan/20 ml-1 cursor-help"
+    >
+      🌤️ weather bot
     </span>
   );
 }
@@ -248,7 +290,9 @@ function WalletRow({ wallet, rank, selected, onSelect, pnl30d }: {
               {wallet.pseudonym || wallet.name || wallet.address?.slice(0, 10) + "…"}
             </Link>
             <CopyableBadge lastTs={wallet.lastTradeTimestamp} avgEv={wallet.avgEv} />
-            <NearExpiryArbBadge winRate={wallet.winRate} avgBuyPrice={wallet.avgBuyPrice} />
+            <WeatherBotBadge avgWeatherRatio={wallet.avgWeatherRatio} />
+            <NearExpiryArbBadge winRate={wallet.winRate} avgBuyPrice={wallet.avgBuyPrice} avgEv={wallet.avgEv} />
+            <CryptoScalperBadge avgUpDownRatio={wallet.avgUpDownRatio} avgBuyPrice={wallet.avgBuyPrice} />
             <LowLiqSniperBadge avgTradeSize={wallet.avgTradeSize} totalTrades={wallet.totalTrades} />
             <WhaleBadge avgTradeSize={wallet.avgTradeSize} totalTrades={wallet.totalTrades} />
           </div>

@@ -31,7 +31,7 @@ const SIGNAL_MIN_EV = 0.03;         // wallet ROI (pnl/vol) must be >= this
 const SIGNAL_MIN_TRADE_USDC = 1_000; // minimum single trade size in USDC
 const SIGNAL_ACCUM_USDC = 1_000;     // minimum cumulative size to emit on trades 2–3
 const SIGNAL_MAX_TRADE_COUNT = 3;    // stop emitting after 3rd trade (position formed)
-const SIGNAL_PRICE_MIN = 0.10;       // exclude near-expiry arb (e.g. kch123 enters @$0.97)
+const SIGNAL_PRICE_MIN = 0.05;       // 5¢ floor: captures weather-bot entries (buy YES at 5¢ on temperature buckets)
 const SIGNAL_PRICE_MAX = 0.90;       // exclude near-certain YES
 //
 // Detection logic:
@@ -133,6 +133,8 @@ async function processLeaderboardWallet(
       trades30d: agg.trades30d,
       avgBuyPrice: agg.avgBuyPrice ?? 0,
       avgTradeSize: agg.avgTradeSize ?? 0,
+      avgWeatherRatio: agg.avgWeatherRatio ?? 0,
+      avgUpDownRatio: agg.avgUpDownRatio ?? 0,
     });
 
     // Store PNL curve points
@@ -365,6 +367,8 @@ async function bootstrapFromLiveTrades() {
             trades30d: agg.trades30d,
       avgBuyPrice: agg.avgBuyPrice ?? 0,
       avgTradeSize: agg.avgTradeSize ?? 0,
+      avgWeatherRatio: agg.avgWeatherRatio ?? 0,
+      avgUpDownRatio: agg.avgUpDownRatio ?? 0,
           });
           storage.clearPnlHistory(addr);
           agg.pnlCurve.forEach(pt =>
@@ -506,6 +510,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
             trades30d: cached?.trades30d ?? 0,
             avgBuyPrice: cached?.avgBuyPrice ?? 0,
             avgTradeSize: cached?.avgTradeSize ?? 0,
+            avgWeatherRatio: cached?.avgWeatherRatio ?? 0,
+            avgUpDownRatio: cached?.avgUpDownRatio ?? 0,
             rank: entry.rank,
           };
         });
@@ -562,6 +568,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
           trades30d: agg.trades30d,
       avgBuyPrice: agg.avgBuyPrice ?? 0,
       avgTradeSize: agg.avgTradeSize ?? 0,
+      avgWeatherRatio: agg.avgWeatherRatio ?? 0,
+      avgUpDownRatio: agg.avgUpDownRatio ?? 0,
         });
         storage.clearPnlHistory(address);
         agg.pnlCurve.forEach(pt =>
@@ -656,6 +664,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
         trades30d: agg.trades30d,
       avgBuyPrice: agg.avgBuyPrice ?? 0,
       avgTradeSize: agg.avgTradeSize ?? 0,
+      avgWeatherRatio: agg.avgWeatherRatio ?? 0,
+      avgUpDownRatio: agg.avgUpDownRatio ?? 0,
       });
     }
 

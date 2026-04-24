@@ -70,6 +70,8 @@ export interface WalletAggregate {
   trades30d: number;           // trades in last 30 days
   avgBuyPrice: number;         // avg price of BUY trades (0–1); high = near-expiry arb
   avgTradeSize: number;         // avg USDC per trade; small + few trades = low-liq sniper
+  avgWeatherRatio: number;      // fraction of markets with weather keywords; >0.5 = weather bot
+  avgUpDownRatio: number;       // fraction of trades on "Up or Down" crypto markets; >0.6 = crypto scalper
 }
 
 async function fetchJson(url: string): Promise<any> {
@@ -259,6 +261,20 @@ export function buildWalletFromLeaderboard(
     ? tradeSizes.reduce((s, v) => s + v, 0) / tradeSizes.length
     : (totalVolume > 0 && totalTrades > 0 ? totalVolume / totalTrades : 0);
 
+  // avgWeatherRatio: fraction of trade titles containing weather keywords
+  // Weather bots (automatedaitradingbot-style) buy YES at 5¢ on exact temperature buckets
+  const WEATHER_KEYWORDS = ['temperature', 'weather', 'highest', 'lowest', 'celsius', 'fahrenheit', 'rain', 'high of', 'low of', 'precip'];
+  const weatherTrades = trades.filter(t => {
+    const title = (t.title ?? '').toLowerCase();
+    return WEATHER_KEYWORDS.some(kw => title.includes(kw));
+  });
+  const avgWeatherRatio = trades.length > 0 ? weatherTrades.length / trades.length : 0;
+
+  // avgUpDownRatio: fraction of trades on "Up or Down" intraday crypto scalp markets
+  // Crypto scalper bots (Sharky-style) enter at $0.90-0.99 right before resolution
+  const upDownTrades = trades.filter(t => (t.title ?? '').toLowerCase().includes('up or down'));
+  const avgUpDownRatio = trades.length > 0 ? upDownTrades.length / trades.length : 0;
+
   // Market categories from recent trades
   const categories = new Set<string>();
   const marketMap = new Map<string, { volume: number; count: number }>();
@@ -297,6 +313,8 @@ export function buildWalletFromLeaderboard(
     avgEv,
     avgBuyPrice,
     avgTradeSize,
+    avgWeatherRatio,
+    avgUpDownRatio,
     winCount,
     lossCount,
     markets: [...categories],
