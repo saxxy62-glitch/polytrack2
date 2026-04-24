@@ -93,14 +93,14 @@ function EmptySignals({ bootstrapDone }: { bootstrapDone: boolean }) {
       </h3>
       <p className="text-xs text-muted-foreground max-w-sm">
         {bootstrapDone
-          ? "Система мониторит Live Feed в реальном времени. Сигнал = первый вход от $1K, или накопление (до 3 сделок суммарно > $1K) на рынке 5–95¢."
+          ? "Система мониторит Live Feed в реальном времени. Сигнал = первый вход от $1K, или накопление (до 3 сделок суммарно > $1K) на рынке 10–90¢."
           : "Дождитесь загрузки лидерборда — после этого детектор начнёт работу автоматически."}
       </p>
       <div className="mt-2 flex gap-3 text-xs text-muted-foreground">
         <span className="px-2 py-1 rounded bg-surface-2 border border-border">ROI ≥ 3%</span>
         <span className="px-2 py-1 rounded bg-surface-2 border border-border">Сделка ≥ $1K</span>
         <span className="px-2 py-1 rounded bg-surface-2 border border-border">≤ 3 сделки на рынке</span>
-        <span className="px-2 py-1 rounded bg-surface-2 border border-border">Цена 5–95¢</span>
+        <span className="px-2 py-1 rounded bg-surface-2 border border-border">Цена 10–90¢</span>
         <span className="px-2 py-1 rounded bg-surface-2 border border-border">Только BUY</span>
       </div>
     </div>
@@ -151,7 +151,7 @@ export default function Signals() {
           )}
         </div>
         <p className="text-xs text-muted-foreground">
-          Сигнал = первый вход от $1K или накопление (≤ 3 сделки, сумма {">"}$1K) на рынке 5–95¢, BUY only.
+          Сигнал = первый вход от $1K или накопление (≤ 3 сделки, сумма {">"}$1K) на рынке 10–90¢, BUY only.
         </p>
       </div>
 
@@ -276,7 +276,7 @@ export default function Signals() {
           {[
             { icon: "👁", title: "Мониторинг", desc: "Каждые 15 сек проверяем Live Feed Polymarket — все новые сделки" },
             { icon: "🔍", title: "Фильтрация", desc: `Оставляем только кошельки из пула ${watcherCount || 230}+ с ROI ≥ 3% (${highEvCount || "?"} активных кандидатов)` },
-            { icon: "📐", title: "Условия", desc: "BUY ≥ $1K, цена 5–95¢, не более 3 сделок на рынке (раннее = лучше)" },
+            { icon: "📐", title: "Условия", desc: "BUY ≥ $1K, цена 10–90¢, не более 3 сделок на рынке (раннее = лучше)" },
             { icon: "🚨", title: "Сигнал", desc: "Алерт появляется мгновенно с размером, ценой и ссылкой на рынок" },
           ].map(s => (
             <div key={s.title} className="flex gap-2">

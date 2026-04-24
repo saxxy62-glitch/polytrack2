@@ -31,8 +31,8 @@ const SIGNAL_MIN_EV = 0.03;         // wallet ROI (pnl/vol) must be >= this
 const SIGNAL_MIN_TRADE_USDC = 1_000; // minimum single trade size in USDC
 const SIGNAL_ACCUM_USDC = 1_000;     // minimum cumulative size to emit on trades 2–3
 const SIGNAL_MAX_TRADE_COUNT = 3;    // stop emitting after 3rd trade (position formed)
-const SIGNAL_PRICE_MIN = 0.05;       // exclude near-certain NO (already resolved)
-const SIGNAL_PRICE_MAX = 0.95;       // exclude near-certain YES
+const SIGNAL_PRICE_MIN = 0.10;       // exclude near-expiry arb (e.g. kch123 enters @$0.97)
+const SIGNAL_PRICE_MAX = 0.90;       // exclude near-certain YES
 //
 // Detection logic:
 //   Trade 1 (isNew):  size >= $1K → always emit — early entry signal
