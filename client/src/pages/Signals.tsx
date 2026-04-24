@@ -144,7 +144,7 @@ export default function Signals() {
         </div>
         <p className="text-xs text-muted-foreground">
           Детектор накопления позиций.{" "}
-          Сигнал = первый вход от $1K или накопление (≤ 3 сделки > $1K суммарно) на рынке 5–95¢.
+          Сигнал = первый вход от $1K или накопление (≤ 3 сделки, сумма {">"}$1K) на рынке 5–95¢.
         </p>
         {watcherCount > 0 && (
           <div className="flex items-center gap-3 mt-2">
