@@ -1,20 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
-  AreaChart, Area, LineChart, Line, BarChart, Bar, ScatterChart, Scatter,
+  BarChart, Bar, ScatterChart, Scatter,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend
 } from "recharts";
-import { apiRequest } from "@/lib/queryClient";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import type { WalletStats } from "@shared/schema";
 
-// ── helpers ──────────────────────────────────────────────────────────────
+// ── helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n: number | null | undefined, decimals = 2) =>
   n == null ? "—" : n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 
@@ -28,7 +25,7 @@ const fmtK = (n: number | null | undefined) => {
 const fmtPct = (n: number | null | undefined) =>
   n == null ? "—" : `${(n * 100).toFixed(1)}%`;
 
-function PnlColor({ val }: { val: number | null | undefined }) {
+function PnlSpan({ val }: { val: number | null | undefined }) {
   const v = val ?? 0;
   return <span className={v >= 0 ? "text-green font-mono" : "text-red font-mono"}>{v >= 0 ? "+" : ""}{fmt(v)}</span>;
 }
@@ -50,15 +47,55 @@ function CategoryBadge({ cat }: { cat: string }) {
   );
 }
 
-// ── KPI cards ─────────────────────────────────────────────────────────────
-interface StatsData {
-  totalWallets: number;
-  totalVolume: number;
-  avgWinRate: number;
-  totalTrades: number;
-  lastUpdate: number;
+// ── Momentum badge ────────────────────────────────────────────────────────────
+// Shows 30d PNL and a "hot/cold" indicator relative to all-time
+function MomentumCell({
+  pnl30d,
+  pnlAll,
+}: {
+  pnl30d: number | null | undefined;
+  pnlAll: number | null | undefined;
+}) {
+  if (pnl30d == null) {
+    return <span className="text-muted-foreground font-mono text-xs">—</span>;
+  }
+
+  const p30 = pnl30d ?? 0;
+  const pAll = pnlAll ?? 0;
+
+  // Ratio: how much of all-time PNL came in the last 30 days
+  // >25% = hot, <5% = living on old wins, negative = drawdown
+  const ratio = pAll !== 0 ? p30 / Math.abs(pAll) : 0;
+
+  let badge = "";
+  let badgeClass = "";
+  if (p30 < 0) {
+    badge = "▼ drawdown";
+    badgeClass = "bg-red/10 text-red border-red/20";
+  } else if (ratio >= 0.25) {
+    badge = "🔥 hot";
+    badgeClass = "bg-green/10 text-green border-green/20";
+  } else if (ratio >= 0.05) {
+    badge = "active";
+    badgeClass = "bg-cyan/10 text-cyan border-cyan/20";
+  } else {
+    badge = "old wins";
+    badgeClass = "bg-surface-3 text-muted-foreground border-border";
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <span className={p30 >= 0 ? "text-green font-mono text-xs" : "text-red font-mono text-xs"}>
+        {p30 >= 0 ? "+" : ""}{fmtK(p30)}
+      </span>
+      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${badgeClass}`}>
+        {badge}
+      </span>
+    </div>
+  );
 }
 
+// ── KPI card ──────────────────────────────────────────────────────────────────
 function KpiCard({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
   return (
     <div className={`gradient-border rounded-lg p-4 ${accent ? "glow-green" : ""}`}>
@@ -69,19 +106,18 @@ function KpiCard({ label, value, sub, accent }: { label: string; value: string; 
   );
 }
 
-// ── Top wallet chart (PNL bar) ─────────────────────────────────────────────
+// ── Charts ────────────────────────────────────────────────────────────────────
 function TopPnlChart({ wallets }: { wallets: WalletStats[] }) {
   const data = wallets.slice(0, 15).map(w => ({
     name: w.pseudonym || w.address.slice(0, 6) + "…",
     pnl: w.totalPnl ?? 0,
   }));
-
   return (
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={data} margin={{ top: 4, right: 4, bottom: 32, left: 4 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
         <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} angle={-35} textAnchor="end" interval={0} />
-        <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} tickFormatter={v => fmtK(v).replace("$","")} />
+        <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} tickFormatter={v => fmtK(v).replace("$", "")} />
         <Tooltip
           contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
           formatter={(v: number) => [fmtK(v), "PNL"]}
@@ -94,15 +130,12 @@ function TopPnlChart({ wallets }: { wallets: WalletStats[] }) {
   );
 }
 
-// ── EV vs WinRate scatter ─────────────────────────────────────────────────
 function EvScatter({ wallets }: { wallets: WalletStats[] }) {
   const data = wallets.map(w => ({
     ev: Math.round((w.avgEv ?? 0) * 100) / 100,
     winRate: Math.round((w.winRate ?? 0) * 100),
-    pnl: w.totalPnl ?? 0,
     name: w.pseudonym || w.address.slice(0, 8),
   }));
-
   return (
     <ResponsiveContainer width="100%" height={220}>
       <ScatterChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
@@ -122,7 +155,6 @@ function EvScatter({ wallets }: { wallets: WalletStats[] }) {
   );
 }
 
-// ── Category pie ─────────────────────────────────────────────────────────
 function CategoryPie({ wallets }: { wallets: WalletStats[] }) {
   const counts: Record<string, number> = {};
   wallets.forEach(w => {
@@ -131,10 +163,8 @@ function CategoryPie({ wallets }: { wallets: WalletStats[] }) {
       cats.forEach(c => { counts[c] = (counts[c] ?? 0) + 1; });
     } catch {}
   });
-
   const data = Object.entries(counts).map(([name, value]) => ({ name, value }));
   const COLORS = ["hsl(var(--yellow))", "hsl(var(--purple))", "hsl(var(--cyan))", "hsl(var(--green))", "hsl(var(--red))", "hsl(var(--muted-foreground))"];
-
   return (
     <ResponsiveContainer width="100%" height={220}>
       <PieChart>
@@ -148,9 +178,11 @@ function CategoryPie({ wallets }: { wallets: WalletStats[] }) {
   );
 }
 
-// ── Wallet table row ──────────────────────────────────────────────────────
-function WalletRow({ wallet, rank, selected, onSelect }: {
-  wallet: WalletStats; rank: number; selected: boolean; onSelect: () => void;
+// ── Wallet table row ──────────────────────────────────────────────────────────
+function WalletRow({
+  wallet, rank, selected, onSelect, pnl30d,
+}: {
+  wallet: WalletStats; rank: number; selected: boolean; onSelect: () => void; pnl30d: number | null;
 }) {
   const categories: string[] = (() => { try { return JSON.parse(wallet.markets ?? "[]"); } catch { return []; } })();
 
@@ -158,9 +190,7 @@ function WalletRow({ wallet, rank, selected, onSelect }: {
     <tr
       onClick={onSelect}
       data-testid={`row-wallet-${wallet.address}`}
-      className={`border-b border-border cursor-pointer transition-colors duration-100 ${
-        selected ? "bg-surface-3" : "hover:bg-surface-2"
-      }`}
+      className={`border-b border-border cursor-pointer transition-colors duration-100 ${selected ? "bg-surface-3" : "hover:bg-surface-2"}`}
     >
       <td className="px-3 py-2.5 text-center">
         <span className={`font-mono text-sm ${rank <= 3 ? "text-yellow font-semibold" : "text-muted-foreground"}`}>
@@ -180,7 +210,11 @@ function WalletRow({ wallet, rank, selected, onSelect }: {
         </div>
       </td>
       <td className="px-3 py-2.5 text-right">
-        <PnlColor val={wallet.totalPnl} />
+        <PnlSpan val={wallet.totalPnl} />
+      </td>
+      {/* 30d PNL vs All-time column */}
+      <td className="px-3 py-2.5 text-right">
+        <MomentumCell pnl30d={pnl30d} pnlAll={wallet.totalPnl} />
       </td>
       <td className="px-3 py-2.5 text-right">
         <span className={`font-mono text-sm ${(wallet.winRate ?? 0) >= 0.55 ? "text-green" : (wallet.winRate ?? 0) >= 0.45 ? "text-foreground" : "text-red"}`}>
@@ -205,13 +239,12 @@ function WalletRow({ wallet, rank, selected, onSelect }: {
   );
 }
 
-// ── Filters bar ───────────────────────────────────────────────────────────
+// ── Filters bar ───────────────────────────────────────────────────────────────
 function FiltersBar({
   sort, setSort,
   minWinRate, setMinWinRate,
   minEv, setMinEv,
   minTrades, setMinTrades,
-  category, setCategory,
   timePeriod, setTimePeriod,
   apiCategory, setApiCategory,
   search, setSearch,
@@ -280,7 +313,7 @@ function FiltersBar({
             data-testid="slider-winrate"
             min={0} max={100} step={5}
             value={[minWinRate * 100]}
-            onValueChange={([v]) => setMinWinRate(v / 100)}
+            onValueChange={([v]: number[]) => setMinWinRate(v / 100)}
             className="cursor-pointer"
           />
         </div>
@@ -294,7 +327,7 @@ function FiltersBar({
             data-testid="slider-ev"
             min={0} max={50} step={1}
             value={[minEv]}
-            onValueChange={([v]) => setMinEv(v)}
+            onValueChange={([v]: number[]) => setMinEv(v)}
             className="cursor-pointer"
           />
         </div>
@@ -325,11 +358,10 @@ function FiltersBar({
   );
 }
 
-// ── Bootstrap progress ────────────────────────────────────────────────────
+// ── Bootstrap progress ────────────────────────────────────────────────────────
 function BootstrapBanner({ status }: { status: any }) {
   if (!status || status.bootstrapDone) return null;
   const pct = status.bootstrapTotal > 0 ? (status.bootstrapProgress / status.bootstrapTotal) * 100 : 5;
-
   return (
     <div className="mb-4 p-3 bg-surface-1 border border-yellow/30 rounded-lg flex items-center gap-3">
       <div className="w-1.5 h-1.5 rounded-full bg-yellow animate-pulse-live" />
@@ -346,13 +378,12 @@ function BootstrapBanner({ status }: { status: any }) {
   );
 }
 
-// ── Main Dashboard ────────────────────────────────────────────────────────
+// ── Main Dashboard ────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const [sort, setSort] = useState("pnl");
   const [minWinRate, setMinWinRate] = useState(0);
   const [minEv, setMinEv] = useState(0);
   const [minTrades, setMinTrades] = useState(0);
-  const [category, setCategory] = useState("__all__");
   const [timePeriod, setTimePeriod] = useState("MONTH");
   const [apiCategory, setApiCategory] = useState("OVERALL");
   const [search, setSearch] = useState("");
@@ -363,25 +394,76 @@ export default function Dashboard() {
     refetchInterval: 3000,
   });
 
-  const walletQueryKey = `/api/wallets?sort=${sort}&limit=50&minEv=${minEv}&minWinRate=${minWinRate}&minTrades=${minTrades}&category=${category === "__all__" ? "" : category}&timePeriod=${timePeriod}&apiCategory=${apiCategory}&orderBy=${sort === "volume" ? "VOL" : "PNL"}`;
-  const { data: wallets, isLoading } = useQuery<WalletStats[]>({
-    queryKey: [walletQueryKey],
-    refetchInterval: 30000,
+  // Primary leaderboard (respects current period/category filters)
+  const primaryKey = `/api/leaderboard?limit=100&timePeriod=${timePeriod}&orderBy=${sort === "volume" ? "VOL" : "PNL"}&category=${apiCategory}`;
+  const { data: leaderboard, isLoading } = useQuery<any[]>({
+    queryKey: [primaryKey],
+    refetchInterval: 60000,
+  });
+
+  // Always fetch MONTH leaderboard in parallel to get 30d PNL for every wallet
+  // (if timePeriod is already MONTH we reuse the same data)
+  const monthKey = `/api/leaderboard?limit=100&timePeriod=MONTH&orderBy=PNL&category=${apiCategory}`;
+  const { data: monthLeaderboard } = useQuery<any[]>({
+    queryKey: [monthKey],
+    refetchInterval: 60000,
+    // skip if we're already on MONTH — same data
+    enabled: timePeriod !== "MONTH",
+  });
+
+  // Build a map: address -> 30d pnl
+  const monthPnlMap = new Map<string, number>();
+  const monthSource = timePeriod === "MONTH" ? leaderboard : monthLeaderboard;
+  (monthSource ?? []).forEach((e: any) => {
+    if (e.proxyWallet) monthPnlMap.set(e.proxyWallet.toLowerCase(), e.pnl ?? 0);
+  });
+
+  // Merge leaderboard with cached wallet details (for winRate, markets etc.)
+  const { data: cachedWallets } = useQuery<WalletStats[]>({
+    queryKey: ["/api/wallets?sort=pnl&limit=100"],
+    refetchInterval: 60000,
+  });
+  const cachedMap = new Map<string, WalletStats>();
+  (cachedWallets ?? []).forEach(w => cachedMap.set(w.address.toLowerCase(), w));
+
+  // Build merged display list
+  const displayList: Array<any & { pnl30d: number | null }> = (leaderboard ?? []).map(e => {
+    const addr = (e.proxyWallet ?? "").toLowerCase();
+    const cached = cachedMap.get(addr);
+    return {
+      // Leaderboard fields (authoritative PNL/vol for current period)
+      address: e.proxyWallet,
+      pseudonym: e.userName || cached?.pseudonym || "",
+      name: e.userName || cached?.name || "",
+      profileImage: e.profileImage || cached?.profileImage || "",
+      totalPnl: e.pnl,
+      totalVolume: e.vol,
+      // Supplemental from cache
+      winRate: cached?.winRate ?? null,
+      totalTrades: cached?.totalTrades ?? null,
+      avgEv: cached?.avgEv ?? null,
+      markets: cached?.markets ?? "[]",
+      // 30d PNL from month leaderboard
+      pnl30d: monthPnlMap.has(addr) ? (monthPnlMap.get(addr) ?? null) : null,
+    };
+  });
+
+  // Apply local filters
+  const filtered = displayList.filter(w => {
+    if (minWinRate > 0 && (w.winRate ?? 0) < minWinRate) return false;
+    if (minEv > 0 && (w.avgEv ?? 0) < minEv) return false;
+    if (minTrades > 0 && (w.totalTrades ?? 0) < minTrades) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!w.address.toLowerCase().includes(q) &&
+          !(w.pseudonym ?? "").toLowerCase().includes(q)) return false;
+    }
+    return true;
   });
 
   const { data: globalStats } = useQuery<any>({
     queryKey: ["/api/stats"],
     refetchInterval: 30000,
-  });
-
-  const filteredWallets = (wallets ?? []).filter(w => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      w.address.toLowerCase().includes(q) ||
-      (w.pseudonym ?? "").toLowerCase().includes(q) ||
-      (w.name ?? "").toLowerCase().includes(q)
-    );
   });
 
   return (
@@ -390,68 +472,50 @@ export default function Dashboard() {
 
       {/* KPI row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <KpiCard
-          label="Wallets Tracked"
-          value={(globalStats?.totalWallets ?? status?.walletCount ?? 0).toLocaleString()}
-          sub="Active traders"
-          accent
-        />
-        <KpiCard
-          label="Total Volume"
-          value={fmtK(globalStats?.totalVolume)}
-          sub="Across all wallets"
-        />
-        <KpiCard
-          label="Avg Win Rate"
-          value={fmtPct(globalStats?.avgWinRate)}
-          sub="Top wallets"
-        />
-        <KpiCard
-          label="Trades Loaded"
-          value={(globalStats?.totalTrades ?? 0).toLocaleString()}
-          sub="Official Polymarket PNL"
-        />
+        <KpiCard label="Wallets Tracked" value={(globalStats?.totalWallets ?? (status as any)?.walletCount ?? 0).toLocaleString()} sub="Active traders" accent />
+        <KpiCard label="Total Volume" value={fmtK(globalStats?.totalVolume)} sub="Across all wallets" />
+        <KpiCard label="Avg Win Rate" value={fmtPct(globalStats?.avgWinRate)} sub="Top wallets" />
+        <KpiCard label="Trades Loaded" value={(globalStats?.totalTrades ?? 0).toLocaleString()} sub="Official Polymarket PNL" />
       </div>
 
       {/* Charts row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="gradient-border rounded-lg p-4 md:col-span-1">
           <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Top 15 by PNL</h3>
-          {isLoading ? <Skeleton className="h-[220px] bg-surface-2" /> : <TopPnlChart wallets={filteredWallets} />}
+          {isLoading ? <Skeleton className="h-[220px] bg-surface-2" /> : <TopPnlChart wallets={filtered as any} />}
         </div>
         <div className="gradient-border rounded-lg p-4">
           <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">EV vs Win Rate</h3>
-          {isLoading ? <Skeleton className="h-[220px] bg-surface-2" /> : <EvScatter wallets={filteredWallets} />}
+          {isLoading ? <Skeleton className="h-[220px] bg-surface-2" /> : <EvScatter wallets={filtered as any} />}
         </div>
         <div className="gradient-border rounded-lg p-4">
           <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Market Categories</h3>
-          {isLoading ? <Skeleton className="h-[220px] bg-surface-2" /> : <CategoryPie wallets={filteredWallets} />}
+          {isLoading ? <Skeleton className="h-[220px] bg-surface-2" /> : <CategoryPie wallets={filtered as any} />}
         </div>
       </div>
 
-      {/* Filters + table */}
+      {/* Filters */}
       <FiltersBar
         sort={sort} setSort={setSort}
         minWinRate={minWinRate} setMinWinRate={setMinWinRate}
         minEv={minEv} setMinEv={setMinEv}
         minTrades={minTrades} setMinTrades={setMinTrades}
-        category={category} setCategory={setCategory}
         timePeriod={timePeriod} setTimePeriod={setTimePeriod}
         apiCategory={apiCategory} setApiCategory={setApiCategory}
         search={search} setSearch={setSearch}
       />
 
+      {/* Table */}
       <div className="gradient-border rounded-lg overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h2 className="text-sm font-semibold text-foreground">Top Wallets</h2>
-          <span className="text-xs text-muted-foreground font-mono">{filteredWallets.length} results</span>
+          <span className="text-xs text-muted-foreground font-mono">{filtered.length} results</span>
         </div>
-
         <div className="overflow-x-auto">
           <table className="w-full text-sm" data-testid="table-wallets">
             <thead>
               <tr className="border-b border-border">
-                {["#", "Wallet", "PNL", "Win Rate", "Trades", "Avg EV", "Volume", "Markets"].map(h => (
+                {["#", "Wallet", "PNL", "30d PNL / Form", "Win Rate", "Trades", "Avg EV", "Volume", "Markets"].map(h => (
                   <th key={h} className="px-3 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left first:text-center">
                     {h}
                   </th>
@@ -462,24 +526,25 @@ export default function Dashboard() {
               {isLoading
                 ? Array.from({ length: 10 }).map((_, i) => (
                     <tr key={i} className="border-b border-border">
-                      {Array.from({ length: 8 }).map((_, j) => (
+                      {Array.from({ length: 9 }).map((_, j) => (
                         <td key={j} className="px-3 py-2.5"><Skeleton className="h-4 bg-surface-2 rounded" /></td>
                       ))}
                     </tr>
                   ))
-                : filteredWallets.map((w, i) => (
+                : filtered.map((w, i) => (
                     <WalletRow
                       key={w.address}
-                      wallet={w}
+                      wallet={w as any}
                       rank={i + 1}
                       selected={selectedWallet === w.address}
                       onSelect={() => setSelectedWallet(selectedWallet === w.address ? null : w.address)}
+                      pnl30d={w.pnl30d}
                     />
                   ))
               }
-              {!isLoading && filteredWallets.length === 0 && (
+              {!isLoading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground text-sm">
+                  <td colSpan={9} className="px-4 py-12 text-center text-muted-foreground text-sm">
                     {(status as any)?.bootstrapDone === false
                       ? "Loading wallet data… this may take a minute."
                       : "No wallets match the current filters."}
