@@ -143,7 +143,7 @@ function LowLiqSniperBadge({ avgTradeSize, totalTrades }: { avgTradeSize: number
 
 // ── "Copyable" badge — composite filter indicator ─────────────────────────────
 function CopyableBadge({ lastTs, avgEv }: { lastTs: number | null | undefined; avgEv: number | null | undefined }) {
-  const ok = isRecent(lastTs, 7) && (avgEv ?? 0) >= 0.3;
+  const ok = isRecent(lastTs, 7) && (avgEv ?? 0) >= 0.03;
   if (!ok) return null;
   return (
     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-yellow/10 text-yellow border-yellow/30 ml-1">
@@ -488,7 +488,7 @@ export default function Dashboard() {
     if (minEv > 0 && (w.avgEv ?? 0) < minEv) return false;
     if (minTrades > 0 && (w.totalTrades ?? 0) < minTrades) return false;
     if (onlyHot && getMomentum(w) !== "hot") return false;
-    if (onlyCopyable && !(isRecent(w.lastTradeTimestamp, 7) && (w.avgEv ?? 0) >= 0.3)) return false;
+    if (onlyCopyable && !(isRecent(w.lastTradeTimestamp, 7) && (w.avgEv ?? 0) >= 0.03)) return false;
     if (search) {
       const q = search.toLowerCase();
       if (!w.address.toLowerCase().includes(q) && !(w.pseudonym ?? "").toLowerCase().includes(q)) return false;
@@ -504,7 +504,7 @@ export default function Dashboard() {
   const { data: globalStats } = useQuery<any>({ queryKey: ["/api/stats"], refetchInterval: 30000 });
 
   // Count copyable wallets for banner
-  const copyableCount = displayList.filter(w => isRecent(w.lastTradeTimestamp, 7) && (w.avgEv ?? 0) >= 0.3).length;
+  const copyableCount = displayList.filter(w => isRecent(w.lastTradeTimestamp, 7) && (w.avgEv ?? 0) >= 0.03).length;
 
   return (
     <div className="max-w-[1600px] mx-auto px-4 py-6">
@@ -515,7 +515,7 @@ export default function Dashboard() {
         <KpiCard label="Wallets Tracked" value={(globalStats?.totalWallets ?? (status as any)?.walletCount ?? 0).toLocaleString()} sub="Active traders" accent />
         <KpiCard label="Total Volume" value={fmtK(globalStats?.totalVolume)} sub="Across all wallets" />
         <KpiCard label="Avg Win Rate" value={fmtPct(globalStats?.avgWinRate)} sub="Top wallets" />
-        <KpiCard label="Copyable Now" value={String(copyableCount)} sub="Last 7d active + EV ≥ 0.3" accent={copyableCount > 0} />
+        <KpiCard label="Copyable Now" value={String(copyableCount)} sub="Last 7d active + EV ≥ 0.03" accent={copyableCount > 0} />
       </div>
 
       {/* Charts row */}
@@ -552,7 +552,7 @@ export default function Dashboard() {
       {onlyCopyable && (
         <div className="mb-4 p-3 bg-yellow/5 border border-yellow/20 rounded-lg text-xs text-yellow/80">
           <span className="font-semibold text-yellow">✓ Copyable filter active</span>
-          {" "}— показаны кошельки с последней сделкой ≤ 7 дней назад и Avg EV ≥ 0.3
+          {" "}— показаны кошельки с последней сделкой ≤ 7 дней назад и Avg EV ≥ 0.03
         </div>
       )}
 
