@@ -94,6 +94,22 @@ function LastTradeCell({ ts }: { ts: number | null | undefined }) {
   );
 }
 
+// ── Near-expiry arb flag — WR >95% + avgBuyPrice >0.90 ──────────────────────
+// These wallets enter at $0.95–0.99 on near-resolved markets (e.g. kch123 Sports arb).
+// High win rate comes from certainty, not edge — signals are not copyable.
+function NearExpiryArbBadge({ winRate, avgBuyPrice }: { winRate: number | null | undefined; avgBuyPrice: number | null | undefined }) {
+  const isArb = (winRate ?? 0) > 0.95 && (avgBuyPrice ?? 0) > 0.90;
+  if (!isArb) return null;
+  return (
+    <span
+      title={`Win rate ${((winRate ?? 0) * 100).toFixed(0)}% + avg entry ¢${((avgBuyPrice ?? 0) * 100).toFixed(0)} — likely near-expiry arbitrage, not predictive edge`}
+      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-orange/10 text-orange border-orange/30 ml-1 cursor-help"
+    >
+      ⚠️ near-expiry arb
+    </span>
+  );
+}
+
 // ── "Copyable" badge — composite filter indicator ─────────────────────────────
 function CopyableBadge({ lastTs, avgEv }: { lastTs: number | null | undefined; avgEv: number | null | undefined }) {
   const ok = isRecent(lastTs, 7) && (avgEv ?? 0) >= 0.3;
@@ -201,6 +217,7 @@ function WalletRow({ wallet, rank, selected, onSelect, pnl30d }: {
               {wallet.pseudonym || wallet.name || wallet.address?.slice(0, 10) + "…"}
             </Link>
             <CopyableBadge lastTs={wallet.lastTradeTimestamp} avgEv={wallet.avgEv} />
+            <NearExpiryArbBadge winRate={wallet.winRate} avgBuyPrice={wallet.avgBuyPrice} />
           </div>
           <span className="text-[10px] font-mono text-muted-foreground">{wallet.address?.slice(0, 8)}…{wallet.address?.slice(-4)}</span>
         </div>

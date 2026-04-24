@@ -23,6 +23,7 @@ export const walletStats = sqliteTable("wallet_stats", {
   // New fields
   lastTradeTimestamp: integer("last_trade_timestamp").default(0), // unix seconds of most recent trade
   trades30d: integer("trades_30d").default(0),  // trade count in last 30 days
+  avgBuyPrice: real("avg_buy_price").default(0), // volume-weighted avg BUY price; >0.90 + WR>95% = near-expiry arb
 });
 
 // Recent live trades for real-time feed

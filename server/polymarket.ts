@@ -68,6 +68,7 @@ export interface WalletAggregate {
   pnlCurve: { timestamp: number; cumPnl: number; tradeCount: number }[];
   lastTradeTimestamp: number;  // unix seconds
   trades30d: number;           // trades in last 30 days
+  avgBuyPrice: number;         // avg price of BUY trades (0–1); high = near-expiry arb
 }
 
 async function fetchJson(url: string): Promise<any> {
@@ -243,6 +244,13 @@ export function buildWalletFromLeaderboard(
   // EV: pnl / volume (return on capital deployed), or from positions if available
   const avgEv = totalVolume > 0 ? totalPnl / totalVolume : 0;
 
+  // avgBuyPrice: volume-weighted average price of BUY trades
+  // Near-expiry arb bots enter at $0.95–0.99, real edge traders span the full range
+  const buyTradesList = trades.filter(t => t.side === "BUY" && (t.price ?? 0) > 0);
+  const buyPriceWeightedSum = buyTradesList.reduce((s, t) => s + (t.price ?? 0) * (t.size ?? 1), 0);
+  const buyVolumeSum = buyTradesList.reduce((s, t) => s + (t.size ?? 1), 0);
+  const avgBuyPrice = buyVolumeSum > 0 ? buyPriceWeightedSum / buyVolumeSum : 0;
+
   // Market categories from recent trades
   const categories = new Set<string>();
   const marketMap = new Map<string, { volume: number; count: number }>();
@@ -279,6 +287,7 @@ export function buildWalletFromLeaderboard(
     totalPnl,
     winRate,
     avgEv,
+    avgBuyPrice,
     winCount,
     lossCount,
     markets: [...categories],

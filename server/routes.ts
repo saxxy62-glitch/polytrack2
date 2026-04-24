@@ -131,6 +131,7 @@ async function processLeaderboardWallet(
       topMarkets: JSON.stringify(agg.topMarkets),
       lastTradeTimestamp: agg.lastTradeTimestamp,
       trades30d: agg.trades30d,
+      avgBuyPrice: agg.avgBuyPrice ?? 0,
     });
 
     // Store PNL curve points
@@ -361,6 +362,7 @@ async function bootstrapFromLiveTrades() {
             topMarkets: JSON.stringify(agg.topMarkets),
             lastTradeTimestamp: agg.lastTradeTimestamp,
             trades30d: agg.trades30d,
+      avgBuyPrice: agg.avgBuyPrice ?? 0,
           });
           storage.clearPnlHistory(addr);
           agg.pnlCurve.forEach(pt =>
@@ -500,6 +502,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
             topMarkets: cached?.topMarkets ?? "[]",
             lastTradeTimestamp: cached?.lastTradeTimestamp ?? 0,
             trades30d: cached?.trades30d ?? 0,
+            avgBuyPrice: cached?.avgBuyPrice ?? 0,
             rank: entry.rank,
           };
         });
@@ -554,6 +557,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
           topMarkets: JSON.stringify(agg.topMarkets),
           lastTradeTimestamp: agg.lastTradeTimestamp,
           trades30d: agg.trades30d,
+      avgBuyPrice: agg.avgBuyPrice ?? 0,
         });
         storage.clearPnlHistory(address);
         agg.pnlCurve.forEach(pt =>
@@ -646,6 +650,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         topMarkets: JSON.stringify(agg.topMarkets),
         lastTradeTimestamp: agg.lastTradeTimestamp,
         trades30d: agg.trades30d,
+      avgBuyPrice: agg.avgBuyPrice ?? 0,
       });
     }
 
