@@ -24,6 +24,7 @@ export const walletStats = sqliteTable("wallet_stats", {
   lastTradeTimestamp: integer("last_trade_timestamp").default(0), // unix seconds of most recent trade
   trades30d: integer("trades_30d").default(0),  // trade count in last 30 days
   avgBuyPrice: real("avg_buy_price").default(0), // volume-weighted avg BUY price; >0.90 + WR>95% = near-expiry arb
+  avgTradeSize: real("avg_trade_size").default(0), // avg USDC per trade; >$500 + <20 trades = low-liq sniper
 });
 
 // Recent live trades for real-time feed

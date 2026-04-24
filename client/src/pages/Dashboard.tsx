@@ -110,6 +110,22 @@ function NearExpiryArbBadge({ winRate, avgBuyPrice }: { winRate: number | null |
   );
 }
 
+// ── Low-liquidity sniper flag — avg trade >$500 + <20 total trades ───────────────
+// These wallets place large concentrated bets on thinly traded markets.
+// High PNL may be survivorship bias; hard to replicate at scale.
+function LowLiqSniperBadge({ avgTradeSize, totalTrades }: { avgTradeSize: number | null | undefined; totalTrades: number | null | undefined }) {
+  const isSniper = (avgTradeSize ?? 0) > 500 && (totalTrades ?? 999) < 20;
+  if (!isSniper) return null;
+  return (
+    <span
+      title={`Avg trade $${Math.round(avgTradeSize ?? 0).toLocaleString()} × ${totalTrades ?? 0} trades — concentrated low-liquidity bets; hard to copy at scale`}
+      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-purple/10 text-purple border-purple/30 ml-1 cursor-help"
+    >
+      🎯 low-liq sniper
+    </span>
+  );
+}
+
 // ── "Copyable" badge — composite filter indicator ─────────────────────────────
 function CopyableBadge({ lastTs, avgEv }: { lastTs: number | null | undefined; avgEv: number | null | undefined }) {
   const ok = isRecent(lastTs, 7) && (avgEv ?? 0) >= 0.3;
@@ -218,6 +234,7 @@ function WalletRow({ wallet, rank, selected, onSelect, pnl30d }: {
             </Link>
             <CopyableBadge lastTs={wallet.lastTradeTimestamp} avgEv={wallet.avgEv} />
             <NearExpiryArbBadge winRate={wallet.winRate} avgBuyPrice={wallet.avgBuyPrice} />
+            <LowLiqSniperBadge avgTradeSize={wallet.avgTradeSize} totalTrades={wallet.totalTrades} />
           </div>
           <span className="text-[10px] font-mono text-muted-foreground">{wallet.address?.slice(0, 8)}…{wallet.address?.slice(-4)}</span>
         </div>

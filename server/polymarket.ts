@@ -69,6 +69,7 @@ export interface WalletAggregate {
   lastTradeTimestamp: number;  // unix seconds
   trades30d: number;           // trades in last 30 days
   avgBuyPrice: number;         // avg price of BUY trades (0–1); high = near-expiry arb
+  avgTradeSize: number;         // avg USDC per trade; small + few trades = low-liq sniper
 }
 
 async function fetchJson(url: string): Promise<any> {
@@ -251,6 +252,13 @@ export function buildWalletFromLeaderboard(
   const buyVolumeSum = buyTradesList.reduce((s, t) => s + (t.size ?? 1), 0);
   const avgBuyPrice = buyVolumeSum > 0 ? buyPriceWeightedSum / buyVolumeSum : 0;
 
+  // avgTradeSize: avg USDC per trade (size * price for each trade)
+  // Low-liq sniper: avgTradeSize > $500 but totalTrades < 20 → concentrated bets on thin markets
+  const tradeSizes = trades.map(t => (t.size ?? 0) * (t.price ?? 1));
+  const avgTradeSize = tradeSizes.length > 0
+    ? tradeSizes.reduce((s, v) => s + v, 0) / tradeSizes.length
+    : (totalVolume > 0 && totalTrades > 0 ? totalVolume / totalTrades : 0);
+
   // Market categories from recent trades
   const categories = new Set<string>();
   const marketMap = new Map<string, { volume: number; count: number }>();
@@ -288,6 +296,7 @@ export function buildWalletFromLeaderboard(
     winRate,
     avgEv,
     avgBuyPrice,
+    avgTradeSize,
     winCount,
     lossCount,
     markets: [...categories],
