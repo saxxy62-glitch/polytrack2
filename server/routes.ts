@@ -907,4 +907,123 @@ export function registerRoutes(httpServer: Server, app: Express) {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+
+  // ─── S4 Seasonal Sports Arb Analysis ─────────────────────────────────────────
+  app.get("/api/s4-analysis", async (_req, res) => {
+    try {
+      const allWallets = storage.getAllWallets();
+
+      // S4 filter: Sports markets, mid-price entry ($0.35–$0.65), large trade size, high WR
+      const s4Candidates = allWallets.filter(w => {
+        const markets: string[] = (() => { try { return JSON.parse(w.markets ?? "[]"); } catch { return []; } })();
+        const hasSports = markets.includes("Sports");
+        const midPrice  = (w.avgBuyPrice ?? 0) >= 0.30 && (w.avgBuyPrice ?? 0) <= 0.72;
+        const goodWR    = (w.winRate ?? 0) > 0.70;
+        return hasSports && midPrice && goodWR && (w.totalTrades ?? 0) > 0;
+      });
+
+      const results = await Promise.all(
+        s4Candidates.slice(0, 20).map(async (wallet) => {
+          try {
+            const trades = await fetchWalletTrades(wallet.address, 500);
+            const sportsTrades = trades.filter(t => {
+              const tl = (t.title ?? "").toLowerCase();
+              return tl.includes("win") || tl.includes("champion") || tl.includes("premier") ||
+                     tl.includes("nba") || tl.includes("nfl") || tl.includes("superbowl") ||
+                     tl.includes("super bowl") || tl.includes("serie a") || tl.includes("laliga") ||
+                     tl.includes("bundesliga") || tl.includes("ucl") || tl.includes("world cup");
+            });
+            const sportsBuys  = sportsTrades.filter(t => t.side === "BUY");
+            const sportsSells = sportsTrades.filter(t => t.side === "SELL");
+
+            // Avg buy + sell prices on sports markets
+            const avgSportsBuyPrice  = sportsBuys.length
+              ? sportsBuys.reduce((s, t) => s + (t.price ?? 0), 0) / sportsBuys.length : 0;
+            const avgSportsSellPrice = sportsSells.length
+              ? sportsSells.reduce((s, t) => s + (t.price ?? 0), 0) / sportsSells.length : 0;
+
+            // Avg trade size in USDC
+            const avgSportsTradeSize = sportsTrades.length
+              ? sportsTrades.reduce((s, t) => s + (t.size ?? 0), 0) / sportsTrades.length : 0;
+
+            // Hedge detection: same market bought + sold (typical S4 pattern)
+            const conditionSides = new Map<string, Set<string>>();
+            sportsTrades.forEach(t => {
+              if (!conditionSides.has(t.conditionId)) conditionSides.set(t.conditionId, new Set());
+              conditionSides.get(t.conditionId)!.add(t.side);
+            });
+            const hedgedMarkets  = [...conditionSides.values()].filter(s => s.has("BUY") && s.has("SELL")).length;
+            const totalMarkets   = conditionSides.size;
+            const hedgeRatio     = totalMarkets > 0 ? hedgedMarkets / totalMarkets : 0;
+
+            // Buy price distribution buckets
+            const priceBuckets: Record<string, number> = {
+              "under0.35": 0, "0.35-0.50": 0, "0.50-0.65": 0,
+              "0.65-0.80": 0, "0.80-0.95": 0, "0.95+": 0,
+            };
+            sportsBuys.forEach(t => {
+              const p = t.price ?? 0;
+              if      (p < 0.35) priceBuckets["under0.35"]++;
+              else if (p < 0.50) priceBuckets["0.35-0.50"]++;
+              else if (p < 0.65) priceBuckets["0.50-0.65"]++;
+              else if (p < 0.80) priceBuckets["0.65-0.80"]++;
+              else if (p < 0.95) priceBuckets["0.80-0.95"]++;
+              else               priceBuckets["0.95+"]++;
+            });
+
+            // Top markets by volume
+            const marketVol = new Map<string, { title: string; vol: number; count: number }>();
+            sportsTrades.forEach(t => {
+              const prev = marketVol.get(t.conditionId) ?? { title: t.title ?? "", vol: 0, count: 0 };
+              marketVol.set(t.conditionId, { title: t.title ?? prev.title, vol: prev.vol + (t.size ?? 0), count: prev.count + 1 });
+            });
+            const topMarkets = [...marketVol.values()]
+              .sort((a, b) => b.vol - a.vol)
+              .slice(0, 3);
+
+            // Post-filter: must have meaningful sports activity
+            if (sportsTrades.length < 3) return null;
+
+            return {
+              address: wallet.address,
+              name: wallet.pseudonym || wallet.name,
+              winRate: wallet.winRate,
+              totalPnl: wallet.totalPnl,
+              totalTrades: wallet.totalTrades,
+              trades30d: wallet.trades30d,
+              avgBuyPrice: wallet.avgBuyPrice,
+              avgTradeSize: wallet.avgTradeSize,
+              sportsTradeCount: sportsTrades.length,
+              sportsBuyCount: sportsBuys.length,
+              sportsSellCount: sportsSells.length,
+              avgSportsBuyPrice,
+              avgSportsSellPrice,
+              avgSportsTradeSize,
+              hedgeRatio,
+              hedgedMarkets,
+              totalMarkets,
+              priceBuckets,
+              topMarkets,
+            };
+          } catch { return null; }
+        })
+      );
+
+      const filtered = results.filter(Boolean)
+        .sort((a: any, b: any) => b.avgSportsTradeSize - a.avgSportsTradeSize);
+
+      res.json({
+        s4Wallets: filtered,
+        summary: {
+          totalScanned: s4Candidates.length,
+          withSportsTrades: filtered.length,
+          avgHedgeRatio: filtered.length
+            ? filtered.reduce((s: number, r: any) => s + r.hedgeRatio, 0) / filtered.length : 0,
+          avgSportsBuyPrice: filtered.length
+            ? filtered.reduce((s: number, r: any) => s + r.avgSportsBuyPrice, 0) / filtered.length : 0,
+        }
+      });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
 }
