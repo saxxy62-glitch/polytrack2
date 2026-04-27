@@ -135,6 +135,8 @@ async function processLeaderboardWallet(
       avgTradeSize: agg.avgTradeSize ?? 0,
       avgWeatherRatio: agg.avgWeatherRatio ?? 0,
       avgUpDownRatio: agg.avgUpDownRatio ?? 0,
+      cryptoUpDownBuyPrice: agg.cryptoUpDownBuyPrice ?? 0,
+      proximityBuckets: JSON.stringify(agg.proximityBuckets ?? {}),
     });
 
     // Store PNL curve points
@@ -372,6 +374,8 @@ async function bootstrapFromLiveTrades() {
       avgTradeSize: agg.avgTradeSize ?? 0,
       avgWeatherRatio: agg.avgWeatherRatio ?? 0,
       avgUpDownRatio: agg.avgUpDownRatio ?? 0,
+      cryptoUpDownBuyPrice: agg.cryptoUpDownBuyPrice ?? 0,
+      proximityBuckets: JSON.stringify(agg.proximityBuckets ?? {}),
           });
           storage.clearPnlHistory(addr);
           agg.pnlCurve.forEach(pt =>
@@ -573,6 +577,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       avgTradeSize: agg.avgTradeSize ?? 0,
       avgWeatherRatio: agg.avgWeatherRatio ?? 0,
       avgUpDownRatio: agg.avgUpDownRatio ?? 0,
+      cryptoUpDownBuyPrice: agg.cryptoUpDownBuyPrice ?? 0,
+      proximityBuckets: JSON.stringify(agg.proximityBuckets ?? {}),
         });
         storage.clearPnlHistory(address);
         agg.pnlCurve.forEach(pt =>
@@ -693,6 +699,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       avgTradeSize: agg.avgTradeSize ?? 0,
       avgWeatherRatio: agg.avgWeatherRatio ?? 0,
       avgUpDownRatio: agg.avgUpDownRatio ?? 0,
+      cryptoUpDownBuyPrice: agg.cryptoUpDownBuyPrice ?? 0,
+      proximityBuckets: JSON.stringify(agg.proximityBuckets ?? {}),
       });
     }
 
@@ -786,6 +794,100 @@ export function registerRoutes(httpServer: Server, app: Express) {
         summary: {
           totalWalletsScanned: sportsArbers.length,
           walletsWithNearExpiry: filtered.filter((r: any) => r.nearExpiryCount > 0).length,
+        }
+      });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+
+  // ─── S2 Crypto Up/Down Scalper Analysis ──────────────────────────────────────
+  app.get("/api/s2-analysis", async (_req, res) => {
+    try {
+      const allWallets = storage.getAllWallets();
+      const s2Wallets = allWallets.filter(w =>
+        (w.avgUpDownRatio ?? 0) > 0.25 && (w.winRate ?? 0) > 0.60 && (w.trades30d ?? 0) > 0
+      );
+
+      const results = await Promise.all(
+        s2Wallets.slice(0, 15).map(async (wallet) => {
+          try {
+            const trades = await fetchWalletTrades(wallet.address, 300);
+            const isUpDown = (title: string) => {
+              const t = title.toLowerCase();
+              return t.includes("up or down") || t.includes("up 5") || t.includes("up 1") ||
+                     t.includes("down 5") || t.includes("down 1") ||
+                     (t.includes("btc") && t.includes("%")) ||
+                     (t.includes("eth") && t.includes("%")) ||
+                     (t.includes("sol") && t.includes("%"));
+            };
+            const upDownTrades = trades.filter(t => isUpDown(t.title ?? ""));
+            const upDownBuys   = upDownTrades.filter(t => t.side === "BUY");
+            const upDownSells  = upDownTrades.filter(t => t.side === "SELL");
+
+            // price bucket distribution for BUY trades on Up/Down markets
+            const priceBuckets: Record<string, number> = {
+              "under0.50": 0, "0.50-0.80": 0, "0.80-0.90": 0,
+              "0.90-0.95": 0, "0.95-0.99": 0, "0.99+": 0,
+            };
+            upDownBuys.forEach(t => {
+              const p = t.price ?? 0;
+              if      (p < 0.50) priceBuckets["under0.50"]++;
+              else if (p < 0.80) priceBuckets["0.50-0.80"]++;
+              else if (p < 0.90) priceBuckets["0.80-0.90"]++;
+              else if (p < 0.95) priceBuckets["0.90-0.95"]++;
+              else if (p < 0.99) priceBuckets["0.95-0.99"]++;
+              else               priceBuckets["0.99+"]++;
+            });
+
+            // proximity buckets from endDate
+            const getExpiry = (t: RawTrade): number | null => {
+              const raw = (t as any).endDate || (t as any).fpmm?.endDate;
+              if (!raw) return null;
+              const ts = new Date(raw).getTime();
+              return isNaN(ts) ? null : ts / 1000;
+            };
+            const proxBuckets = { under1h: 0, under6h: 0, under24h: 0, over24h: 0, unknown: 0 };
+            upDownBuys.forEach(t => {
+              const expiry = getExpiry(t);
+              if (!expiry) { proxBuckets.unknown++; return; }
+              const secs = expiry - (t.timestamp ?? 0);
+              if      (secs < 3600)  proxBuckets.under1h++;
+              else if (secs < 21600) proxBuckets.under6h++;
+              else if (secs < 86400) proxBuckets.under24h++;
+              else                   proxBuckets.over24h++;
+            });
+
+            const avgUpDownBuyPrice = upDownBuys.length > 0
+              ? upDownBuys.reduce((s, t) => s + (t.price ?? 0), 0) / upDownBuys.length : 0;
+
+            return {
+              address: wallet.address,
+              name: wallet.pseudonym || wallet.name,
+              winRate: wallet.winRate,
+              totalPnl: wallet.totalPnl,
+              trades30d: wallet.trades30d,
+              avgUpDownRatio: wallet.avgUpDownRatio,
+              avgBuyPrice: wallet.avgBuyPrice,
+              upDownTradeCount: upDownTrades.length,
+              upDownBuyCount: upDownBuys.length,
+              upDownSellCount: upDownSells.length,
+              avgUpDownBuyPrice,
+              priceBuckets,
+              proximityBuckets: proxBuckets,
+            };
+          } catch { return null; }
+        })
+      );
+
+      const filtered = results.filter(Boolean);
+      res.json({
+        s2Wallets: filtered.sort((a: any, b: any) => b.avgUpDownRatio - a.avgUpDownRatio),
+        summary: {
+          totalScanned: s2Wallets.length,
+          withUpDownTrades: filtered.filter((r: any) => r.upDownTradeCount > 0).length,
+          avgUpDownBuyPrice: filtered.length
+            ? filtered.reduce((s: number, r: any) => s + r.avgUpDownBuyPrice, 0) / filtered.length
+            : 0,
         }
       });
     } catch (e) { res.status(500).json({ error: String(e) }); }
