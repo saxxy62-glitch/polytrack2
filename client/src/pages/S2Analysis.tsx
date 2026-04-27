@@ -64,7 +64,7 @@ export default function S2Analysis() {
             S2 — Crypto Up/Down Scalper Analysis
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Кошельки торгующие BTC/ETH/SOL Up-or-Down рынками · реальный ratio &gt; 20% · endDate via Gamma API
+            Near-expiry Up/Down specialists · ¢95+ entry OR &lt;6h proximity · S2 Score = 60% price + 40% proximity signal
           </p>
         </div>
       </div>
@@ -181,6 +181,9 @@ export default function S2Analysis() {
                       <Link href={`/wallet/${w.address}`} className="text-cyan hover:text-cyan/80 font-medium">
                         {w.name || w.address?.slice(0,10)}
                       </Link>
+                    </td>
+                    <td className="px-3 py-2 font-mono font-bold" style={{color: `hsl(${Math.round((w.s2Score ?? 0) * 120)}, 70%, 55%)`}}>
+                      {((w.s2Score ?? 0) * 100).toFixed(0)}
                     </td>
                     <td className="px-3 py-2 font-mono text-green">{pct(w.winRate ?? 0)}</td>
                     <td className="px-3 py-2 font-mono text-green">{fmtK(w.totalPnl ?? 0)}</td>
