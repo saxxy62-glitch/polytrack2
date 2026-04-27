@@ -202,9 +202,10 @@ export default function S2Analysis() {
 
       <div className="mt-4 p-4 bg-yellow/5 border border-yellow/20 rounded-lg">
         <p className="text-xs text-muted-foreground">
-          <span className="text-yellow font-semibold">⏳ Первая загрузка занимает ~15–30 сек — идёт обогащение trades через Gamma API (endDate кэшируется).</p><p className="text-xs text-muted-foreground mt-1"><span className="text-yellow font-semibold">S2 Feasibility:</span>{" "}
-          Если &lt;1h% высокий + avg buy ¢95+ — near-expiry скальпинг подтверждён. Если unknown% высокий —
-          Polymarket API не возвращает endDate — теперь используем Gamma API с кэшем.
+          <span className="text-yellow font-semibold">⏳ Первая загрузка ~15–30 сек</span>{" "}— идёт обогащение trades через Gamma API (endDate кэшируется).
+          {" "}<span className="text-yellow font-semibold">S2 Feasibility:</span>{" "}
+          Если &lt;1h% высокий + avg buy ¢95+ — near-expiry скальпинг подтверждён.
+          Если unknown% высокий — endDate подтягивается через Gamma API + title heuristic.
         </p>
       </div>
     </div>
