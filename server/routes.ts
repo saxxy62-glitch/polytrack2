@@ -877,14 +877,38 @@ export function registerRoutes(httpServer: Server, app: Express) {
             const avgUpDownBuyPrice = upDownBuys.length > 0
               ? upDownBuys.reduce((s, t) => s + (t.price ?? 0), 0) / upDownBuys.length : 0;
 
-            // Post-filter: skip wallets with <20% real up/down ratio
+            // Post-filter 1: real Up/Down ratio
             const realUpDownRatio = upDownTrades.length / Math.max(1, trades.length);
             if (realUpDownRatio < 0.20 && upDownTrades.length < 5) return null;
+
+            // Post-filter 2: near-expiry S2 specialist screening
+            // Must have EITHER high-price buys (¢95+) OR confirmed proximity signals
+            const nearExpiryBuys  = (priceBuckets["0.95-0.99"] ?? 0) + (priceBuckets["0.99+"] ?? 0);
+            const knownProxTotal  = proxBuckets.under1h + proxBuckets.under6h + proxBuckets.under24h + proxBuckets.over24h;
+            const proxUnknownPct  = knownProxTotal + proxBuckets.unknown > 0
+              ? proxBuckets.unknown / (knownProxTotal + proxBuckets.unknown) : 1;
+            const under6hPct      = knownProxTotal > 0
+              ? (proxBuckets.under1h + proxBuckets.under6h) / knownProxTotal : 0;
+
+            // S2 score: combination of near-expiry price signal + proximity signal
+            // Weighted: 60% price bucket signal, 40% proximity signal
+            const priceSignal = upDownBuys.length > 0 ? nearExpiryBuys / upDownBuys.length : 0;
+            const proxSignal  = proxUnknownPct < 0.8 ? under6hPct : priceSignal; // fallback to price if mostly unknown
+            const s2Score     = priceSignal * 0.6 + proxSignal * 0.4;
+
+            // Must have at least some near-expiry signal to qualify as S2 specialist
+            // (relaxed: ≥1 high-price buy OR s2Score > 0 with sufficient Up/Down trades)
+            const isS2Specialist = nearExpiryBuys >= 1 || (s2Score > 0.05 && upDownBuys.length >= 3);
+            if (!isS2Specialist) return null;
 
             return {
               address: wallet.address,
               name: wallet.pseudonym || wallet.name,
               realUpDownRatio,
+              s2Score,
+              nearExpiryBuys,
+              under6hPct,
+              proxUnknownPct,
               winRate: wallet.winRate,
               totalPnl: wallet.totalPnl,
               trades30d: wallet.trades30d,
