@@ -75,6 +75,7 @@ function Nav() {
 
         <div className="flex items-center gap-1">
           <NavLink href="/">Dashboard</NavLink>
+          <NavLink href="/sports-arb">🎯 Sports Arb</NavLink>
           <NavLink href="/signals">
             <SignalsNavItem />
           </NavLink>
