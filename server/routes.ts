@@ -5,6 +5,7 @@ import {
   fetchLeaderboard,
   fetchLatestTrades,
   fetchWalletTrades,
+  enrichTradesWithEndDate,
   fetchClosedPositionsForChart,
   buildWalletFromLeaderboard,
   aggregateWalletOnDemand,
@@ -804,18 +805,22 @@ export function registerRoutes(httpServer: Server, app: Express) {
   app.get("/api/s2-analysis", async (_req, res) => {
     try {
       const allWallets = storage.getAllWallets();
-      const s2Wallets = allWallets.filter(w => {
-        // Primary filter: Crypto category + decent win rate
-        // avgUpDownRatio may be 0 for older cached wallets — we recompute from trades below
+      // Filter: either avgUpDownRatio already computed (>25%) OR has Crypto markets
+      // We re-derive ratio from live trades below, so wide filter is OK — scoring happens inside
+      const s2Candidates = allWallets.filter(w => {
         const markets: string[] = (() => { try { return JSON.parse(w.markets ?? "[]"); } catch { return []; } })();
-        const hasCrypto = markets.includes("Crypto") || (w.avgUpDownRatio ?? 0) > 0.15;
+        const hasCrypto = markets.includes("Crypto") || (w.avgUpDownRatio ?? 0) > 0.10;
         return hasCrypto && (w.winRate ?? 0) > 0.60 && (w.totalTrades ?? 0) > 0;
       });
+      // We'll recompute upDownRatio from actual trades and filter post-hoc
+      const s2Wallets = s2Candidates;
 
       const results = await Promise.all(
         s2Wallets.slice(0, 15).map(async (wallet) => {
           try {
-            const trades = await fetchWalletTrades(wallet.address, 300);
+            const rawTrades = await fetchWalletTrades(wallet.address, 300);
+            // Enrich with endDate from gamma market API (cached)
+            const trades = await enrichTradesWithEndDate(rawTrades);
             const isUpDown = (title: string) => {
               const t = title.toLowerCase();
               return t.includes("up or down") || t.includes("up 5") || t.includes("up 1") ||
@@ -864,9 +869,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
             const avgUpDownBuyPrice = upDownBuys.length > 0
               ? upDownBuys.reduce((s, t) => s + (t.price ?? 0), 0) / upDownBuys.length : 0;
 
+            // Post-filter: skip wallets with <20% real up/down ratio
+            const realUpDownRatio = upDownTrades.length / Math.max(1, trades.length);
+            if (realUpDownRatio < 0.20 && upDownTrades.length < 5) return null;
+
             return {
               address: wallet.address,
               name: wallet.pseudonym || wallet.name,
+              realUpDownRatio,
               winRate: wallet.winRate,
               totalPnl: wallet.totalPnl,
               trades30d: wallet.trades30d,
