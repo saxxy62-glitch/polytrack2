@@ -64,7 +64,8 @@ function WalletRow({ w }: { w: any }) {
         <td className="px-3 py-2">
           <div className="flex items-center gap-1.5">
             {isStrong && <span className="text-yellow text-[10px] font-bold">★</span>}
-            {subtype  && <span className="text-[9px] px-1 rounded bg-surface-offset text-muted-foreground">{subtype}</span>}
+            {w.s4Score!=null&&<span className="text-[9px] px-1 rounded bg-surface-offset font-mono text-muted-foreground">{w.s4Score}</span>}
+            {subtype  && <span className={`text-[9px] px-1 rounded font-medium ${w.strongS4Long?"bg-blue/10 text-blue":w.strongS4Short?"bg-orange/10 text-orange":"bg-surface-offset text-muted-foreground"}`}>{subtype}</span>}
             <Link href={`/wallet/${w.address}`} className="text-cyan hover:text-cyan/80 font-medium text-xs"
               onClick={e=>e.stopPropagation()}>
               {w.name||w.address?.slice(0,10)}
@@ -86,6 +87,13 @@ function WalletRow({ w }: { w: any }) {
         <td className="px-3 py-2 font-mono text-xs text-blue">{pct(w.longHorizonTradeShare)}</td>
         <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
           {w.pnlPerCapitalDay != null ? `$${w.pnlPerCapitalDay.toFixed(2)}` : "—"}
+        </td>
+        <td className="px-3 py-2 font-mono text-xs">
+          {w.s4Score != null ? (
+            <span className={`px-1.5 py-0.5 rounded font-bold ${
+              w.s4Score>=70?"bg-green/15 text-green":w.s4Score>=50?"bg-yellow/15 text-yellow":w.s4Score>=30?"bg-orange/15 text-orange":"bg-surface-offset text-muted-foreground"
+            }`}>{w.s4Score}</span>
+          ) : "—"}
         </td>
       </tr>
       {open && w.topSeries?.length>0 && (
@@ -110,7 +118,7 @@ function WalletRow({ w }: { w: any }) {
 // ── Main page ──────────────────────────────────────────────────────────────
 export default function S4Analysis() {
   const { data, isLoading } = useQuery<any>({ queryKey:["/api/s4-analysis"], refetchInterval:120_000 });
-  const wallets  = data?.s4Wallets ?? [];
+  const wallets  = [...(data?.s4Wallets ?? [])].sort((a:any,b:any)=>(b.s4Score??0)-(a.s4Score??0));
   const summary  = data?.summary   ?? {};
 
   // Resolution buckets stacked bar (top 8 wallets)
@@ -169,7 +177,9 @@ export default function S4Analysis() {
       <div className="grid grid-cols-4 gap-3 mb-5">
         {[
           {label:"S4 Candidates",       val:String(summary.s4Candidates??0),      icon:<Trophy className="w-4 h-4 text-yellow"/>},
-          {label:"Strong S4 ★",         val:String(summary.strongS4Candidates??0), icon:<Shield className="w-4 h-4 text-green"/>},
+          {label:"Strong S4 ★",
+          val:`${summary.strongS4Candidates??0} (${wallets.filter((w:any)=>w.strongS4Long).length}L / ${wallets.filter((w:any)=>w.strongS4Short).length}S)`,
+          icon:<Shield className="w-4 h-4 text-green"/>},
           {label:"Avg Series Hedge",     val:pct(summary.avgHedgeRatio),            icon:<Shield className="w-4 h-4 text-blue"/>},
           {label:"Avg Sports Buy Price", val:c(summary.avgSportsBuyPrice),          icon:<TrendingUp className="w-4 h-4 text-muted-foreground"/>},
         ].map(({label,val,icon})=>(
@@ -273,7 +283,7 @@ export default function S4Analysis() {
                 <tr>
                   <th className="w-5 px-2 py-2"/>
                   {["Wallet","PnL","Avg Buy","Avg Size","Series","Top Series","Outcomes","Hedge%",
-                    "Median d","W.Med d","Near-exp%","Short%","Long%","PnL/cap-d"].map(h=>(
+                    "Median d","W.Med d","Near-exp%","Short%","Long%","PnL/cap-d","Score"].map(h=>(
                     <th key={h} className="text-left px-3 py-2 text-muted-foreground font-medium whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
