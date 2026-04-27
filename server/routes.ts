@@ -804,9 +804,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
   app.get("/api/s2-analysis", async (_req, res) => {
     try {
       const allWallets = storage.getAllWallets();
-      const s2Wallets = allWallets.filter(w =>
-        (w.avgUpDownRatio ?? 0) > 0.25 && (w.winRate ?? 0) > 0.60 && (w.trades30d ?? 0) > 0
-      );
+      const s2Wallets = allWallets.filter(w => {
+        // Primary filter: Crypto category + decent win rate
+        // avgUpDownRatio may be 0 for older cached wallets — we recompute from trades below
+        const markets: string[] = (() => { try { return JSON.parse(w.markets ?? "[]"); } catch { return []; } })();
+        const hasCrypto = markets.includes("Crypto") || (w.avgUpDownRatio ?? 0) > 0.15;
+        return hasCrypto && (w.winRate ?? 0) > 0.60 && (w.totalTrades ?? 0) > 0;
+      });
 
       const results = await Promise.all(
         s2Wallets.slice(0, 15).map(async (wallet) => {
