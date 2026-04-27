@@ -102,6 +102,7 @@ function AppInner() {
           <Route path="/wallet/:address" component={WalletDetail} />
           <Route path="/signals" component={Signals} />
           <Route path="/live" component={LiveFeed} />
+          <Route path="/sports-arb" component={SportsArb} />
           <Route component={NotFound} />
         </Switch>
       </div>
