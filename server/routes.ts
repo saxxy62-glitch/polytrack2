@@ -710,4 +710,61 @@ export function registerRoutes(httpServer: Server, app: Express) {
       res.status(502).json({ error: "Leaderboard fetch failed", details: String(e) });
     }
   });
+
+  // ─── S3 Sports Near-Expiry Analysis ─────────────────────────────────────────
+  app.get("/api/sports-nearexpiry", async (_req, res) => {
+    try {
+      const allWallets = storage.getAllWallets();
+      const sportsArbers = allWallets.filter(w => {
+        const markets: string[] = (() => { try { return JSON.parse(w.markets ?? "[]"); } catch { return []; } })();
+        return markets.includes("Sports") && (w.avgBuyPrice ?? 0) > 0.70 && (w.winRate ?? 0) > 0.75 && (w.trades30d ?? 0) > 0;
+      });
+      const sportKeywords = ["vs.", " vs ", "game", "match", "series", "playoffs",
+        "nba", "nfl", "mlb", "nhl", "soccer", "tennis", "ufc", "mma",
+        "basketball", "football", "baseball", "hockey"];
+      const results = await Promise.all(
+        sportsArbers.slice(0, 12).map(async (wallet) => {
+          try {
+            const trades = await fetchWalletTrades(wallet.address, 200);
+            const nearExpiryTrades = trades.filter(t => {
+              const title = (t.title ?? "").toLowerCase();
+              return t.side === "BUY" && (t.price ?? 0) > 0.93
+                && sportKeywords.some(kw => title.includes(kw));
+            });
+            const buckets: Record<string, number> = { "0.93-0.95": 0, "0.95-0.97": 0, "0.97-0.99": 0, "0.99+": 0 };
+            let totalVolume = 0;
+            nearExpiryTrades.forEach(t => {
+              const p = t.price ?? 0;
+              totalVolume += (t.size ?? 0) * p;
+              if (p >= 0.99) buckets["0.99+"]++;
+              else if (p >= 0.97) buckets["0.97-0.99"]++;
+              else if (p >= 0.95) buckets["0.95-0.97"]++;
+              else buckets["0.93-0.95"]++;
+            });
+            return {
+              address: wallet.address, name: wallet.pseudonym || wallet.name,
+              winRate: wallet.winRate, avgBuyPrice: wallet.avgBuyPrice,
+              totalPnl: wallet.totalPnl, trades30d: wallet.trades30d,
+              avgTradeSize: wallet.avgTradeSize,
+              nearExpiryCount: nearExpiryTrades.length, nearExpiryVolume: totalVolume,
+              priceBuckets: buckets,
+              sampleTrades: nearExpiryTrades.slice(0, 5).map(t => ({
+                title: t.title, price: t.price, size: t.size,
+                timestamp: t.timestamp, outcome: t.outcome,
+              })),
+            };
+          } catch { return null; }
+        })
+      );
+      const filtered = results.filter(Boolean);
+      res.json({
+        sportsArbers: filtered.sort((a: any, b: any) => b.nearExpiryCount - a.nearExpiryCount),
+        summary: {
+          totalWalletsScanned: sportsArbers.length,
+          walletsWithNearExpiry: filtered.filter((r: any) => r.nearExpiryCount > 0).length,
+        }
+      });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
 }
