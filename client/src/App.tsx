@@ -9,6 +9,7 @@ import WalletDetail from "@/pages/WalletDetail";
 import LiveFeed from "@/pages/LiveFeed";
 import Signals from "@/pages/Signals";
 import NotFound from "@/pages/not-found";
+import SportsArb from "@/pages/SportsArb";
 
 function Logo() {
   return (
