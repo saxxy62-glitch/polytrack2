@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { parseSeriesKey, isExcludedFromS4 } from "./seriesParser";
 import { Server } from "http";
 import { storage } from "./storage";
 import {
@@ -954,69 +955,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       });
 
       // ── Series key normalizer ────────────────────────────────────────────────────
-      function normalizeSeriesKey(title: string): string {
-        const t = title.toLowerCase();
+      // Series key parsing → see server/seriesParser.ts (deterministic rule-based)
 
-        // EPL / Premier League
-        if (t.includes("premier league") || t.includes("epl")) {
-          const m = t.match(/20(\d{2})[–\-\/](\d{2,4})/);
-          const yr = m ? `${m[1]}_${m[2].slice(-2)}` : "cur";
-          return `epl_${yr}_winner`;
-        }
-        // Champions League
-        if (t.includes("champions league") || t.includes("ucl")) {
-          const m = t.match(/20(\d{2})[–\-\/](\d{2,4})/);
-          const yr = m ? `${m[1]}_${m[2].slice(-2)}` : "cur";
-          return `ucl_${yr}_winner`;
-        }
-        // La Liga
-        if (t.includes("la liga") || t.includes("laliga")) {
-          const m = t.match(/20(\d{2})[–\-\/](\d{2,4})/);
-          const yr = m ? `${m[1]}_${m[2].slice(-2)}` : "cur";
-          return `laliga_${yr}_winner`;
-        }
-        // Bundesliga
-        if (t.includes("bundesliga")) {
-          const m = t.match(/20(\d{2})[–\-\/](\d{2,4})/);
-          const yr = m ? `${m[1]}_${m[2].slice(-2)}` : "cur";
-          return `bundesliga_${yr}_winner`;
-        }
-        // Serie A
-        if (t.includes("serie a")) {
-          const m = t.match(/20(\d{2})[–\-\/](\d{2,4})/);
-          const yr = m ? `${m[1]}_${m[2].slice(-2)}` : "cur";
-          return `serie_a_${yr}_winner`;
-        }
-        // NBA
-        if (t.includes("nba") && (t.includes("champion") || t.includes("finals") || t.includes("win the"))) {
-          const m = t.match(/20(\d{2})[–\-\/](\d{2,4})/);
-          const yr = m ? `${m[1]}_${m[2].slice(-2)}` : "cur";
-          return `nba_${yr}_champion`;
-        }
-        // NFL / Super Bowl
-        if (t.includes("super bowl") || (t.includes("nfl") && t.includes("champion"))) {
-          const m = t.match(/super bowl (\w+)/);
-          const sb = m ? m[1] : "cur";
-          return `nfl_sb_${sb}_winner`;
-        }
-        // World Cup
-        if (t.includes("world cup") && (t.includes("win") || t.includes("champion"))) {
-          const m = t.match(/20(\d{2})/);
-          const yr = m ? m[1] : "cur";
-          return `wc_${yr}_winner`;
-        }
-        // Generic: extract year + "winner/champion" pattern → slug from first 6 words
-        const words = t.replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(Boolean).slice(0, 6);
-        return words.join("_").slice(0, 48);
-      }
-
-      function seriesLabel(key: string): string {
-        return key
-          .replace(/_/g, " ")
-          .replace(/(\w)/g, c => c.toUpperCase())
-          .replace(/Epl/, "EPL").replace(/Ucl/, "UCL").replace(/Nba/, "NBA")
-          .replace(/Nfl/, "NFL").replace(/Wc /, "World Cup ");
-      }
 
       // ── Main per-wallet analysis ─────────────────────────────────────────────────
       const results = await Promise.all(
@@ -1025,12 +965,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
             const trades = await fetchWalletTrades(wallet.address, 500);
 
             const sportsTrades = trades.filter(t => {
+              if (isExcludedFromS4(t.title ?? "")) return false;
               const tl = (t.title ?? "").toLowerCase();
               return tl.includes("win") || tl.includes("champion") || tl.includes("premier") ||
                      tl.includes("nba") || tl.includes("nfl") || tl.includes("super bowl") ||
                      tl.includes("serie a") || tl.includes("laliga") || tl.includes("la liga") ||
                      tl.includes("bundesliga") || tl.includes("ucl") || tl.includes("world cup") ||
-                     tl.includes("champions league");
+                     tl.includes("champions league") || tl.includes("stanley cup") ||
+                     tl.includes("ballon") || tl.includes("playoffs") || tl.includes("make the");
             });
 
             if (sportsTrades.length < 3) return null;
@@ -1091,11 +1033,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
             const seriesMap = new Map<string, SeriesEntry>();
 
             sportsTrades.forEach(t => {
-              const key = normalizeSeriesKey(t.title ?? "");
+              const parsed = parseSeriesKey(t.title ?? "");
+              if (parsed.marketType === "match" || (parsed.marketType === "other" && !parsed.competition)) return;
+              const key = parsed.seriesKey ?? ("other_" + (t.title ?? "").slice(0, 30).replace(/\s+/g, "_"));
               if (!seriesMap.has(key)) {
                 seriesMap.set(key, {
                   seriesKey: key,
-                  seriesLabel: seriesLabel(key),
+                  seriesLabel: parsed.seriesLabel ?? key,
                   outcomes: new Set(),
                   conditionIds: new Set(),
                   buyTrades: 0, sellTrades: 0,
@@ -1108,15 +1052,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
                 });
               }
               const s = seriesMap.get(key)!;
-              // Outcome = the specific team/option in the title
-              // Extract by removing the series-level tokens
-              const outcomeToken = (t.title ?? "")
-                .replace(/will /i, "")
-                .replace(/win the .*/i, "")
-                .replace(/champion.*/i, "")
-                .trim()
-                .toLowerCase()
-                .slice(0, 40);
+              const outcomeToken = parsed.subject
+                ? parsed.subject.toLowerCase().slice(0, 40)
+                : (t.title ?? "").replace(/will /i, "").replace(/win the .*/i, "")
+                    .replace(/make the .*/i, "").replace(/finish .*/i, "")
+                    .trim().toLowerCase().slice(0, 40);
               s.outcomes.add(outcomeToken);
               s.conditionIds.add(t.conditionId);
               if (t.side === "BUY") {
