@@ -1234,16 +1234,47 @@ export function registerRoutes(httpServer: Server, app: Express) {
             let walletWeightedMedianDays: number|null = null;
             if (wTot){let cum=0;for(const p of wPairs){cum+=p.w;if(cum>=wTot/2){walletWeightedMedianDays=p.d;break;}}}
 
-            const strongS4Candidate =
-              sportsTrades.length >= 5 &&
-              (avgSportsBuyPrice ?? 0) >= 0.25 &&
-              (avgSportsBuyPrice ?? 0) <= 0.80 &&
-              (avgSportsTradeSize ?? 0) >= 1_000 &&
-              (topSeries?.outcomesTraded ?? 0) >= 2 &&
-              (topSeries?.hedgeRatio ?? 0) >= 0.65 &&
-              maxSeriesConcentration >= 0.30;
-            const strongS4Short = (topSeries?.hedgeRatio??0)>=0.75 && walletShortH>=0.50;
-            const strongS4Long  = (topSeries?.hedgeRatio??0)>=0.75 && walletLongH>=0.50;
+            // ── strongS4Candidate: score-based, not hard AND ──────────
+            // Core signal: hedgeRatio + outcomes in one series.
+            // Time horizon and price/size are supporting evidence only.
+            const hedgeScore    = topSeries?.hedgeRatio ?? 0;
+            const outcomeScore  = topSeries?.outcomesTraded ?? 0;
+            const concScore     = maxSeriesConcentration;
+            const horizonScore  = walletWeightedMedianDays ?? 0;
+
+            // Primary gate: must have real cross-outcome hedge in top series
+            const primaryGate =
+              sportsTrades.length >= 3 &&
+              outcomeScore >= 2 &&
+              hedgeScore >= 0.50 &&
+              concScore >= 0.20;
+
+            // Scoring: each dimension contributes independently
+            let s4Score = 0;
+            if (hedgeScore >= 0.90) s4Score += 3;
+            else if (hedgeScore >= 0.75) s4Score += 2;
+            else if (hedgeScore >= 0.60) s4Score += 1;
+
+            if (outcomeScore >= 4) s4Score += 3;
+            else if (outcomeScore >= 3) s4Score += 2;
+            else if (outcomeScore >= 2) s4Score += 1;
+
+            if (horizonScore >= 30) s4Score += 2;
+            else if (horizonScore >= 7) s4Score += 1;
+
+            if (concScore >= 0.60) s4Score += 2;
+            else if (concScore >= 0.40) s4Score += 1;
+
+            // Supporting: price band and size are soft boosts, not gates
+            if ((avgSportsBuyPrice ?? 0) >= 0.25 && (avgSportsBuyPrice ?? 0) <= 0.80) s4Score += 1;
+            if ((avgSportsTradeSize ?? 0) >= 5_000) s4Score += 1;
+
+            // strongS4: primary gate + score >= 5
+            const strongS4Candidate = primaryGate && s4Score >= 5;
+
+            // Subtypes by horizon (no score threshold — just hedge + horizon)
+            const strongS4Short = hedgeScore >= 0.65 && outcomeScore >= 2 && walletShortH >= 0.40;
+            const strongS4Long  = hedgeScore >= 0.65 && outcomeScore >= 2 && walletLongH  >= 0.40;
 
             // Post-filter: must have ≥1 series with ≥2 outcomes OR seriesHedgeRatio > 0.3
             const hasHedge = seriesRows.some(r => r.outcomesTraded >= 2 || r.hedgeRatio > 0.30);
