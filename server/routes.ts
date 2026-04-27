@@ -1051,6 +1051,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
                   buyPriceSum: 0, sellPriceSum: 0,
                   timestamps: [],
                   endDates: [],
+                  endTsData: [] as Array<{ ts: number; source: string; confidence: string }>,
+                  notionals: [] as number[],
                   sampleSlugs: new Set(),
                   sampleTitle: t.title ?? "",
                 });
@@ -1072,9 +1074,30 @@ export function registerRoutes(httpServer: Server, app: Express) {
                 s.sellNotional  += (t.size ?? 0);
                 s.sellPriceSum  += (t.price ?? 0);
               }
-              s.timestamps.push(t.timestamp ?? 0);
-              if (t.endDate) s.endDates.push(Math.floor(new Date(t.endDate).getTime() / 1000));
-              if (t.slug)    s.sampleSlugs.add(t.slug);
+              const tradeTsUnix = t.timestamp ?? 0;
+              s.timestamps.push(tradeTsUnix);
+              let endTs: number | null = null;
+              let endSrc = "unknown", endConf = "low";
+              if (t.endDate) {
+                endTs = Math.floor(new Date(t.endDate).getTime() / 1000);
+                endSrc = "trade_payload"; endConf = "high";
+              } else if ((t as any).gameStartTime) {
+                endTs = Math.floor(new Date((t as any).gameStartTime).getTime() / 1000);
+                endSrc = "gamma_market"; endConf = "medium";
+              } else {
+                const tdm = (t.title ?? "").match(/\b(\d{4}-\d{2}-\d{2})\b/);
+                if (tdm) { endTs = Math.floor(new Date(tdm[1]).getTime() / 1000); endSrc = "title_parse"; endConf = "low"; }
+              }
+              if (!endTs) {
+                const est = estimateEndDateForSports(t.title ?? "", tradeTsUnix);
+                if (est) { endTs = Math.floor(new Date(est).getTime() / 1000); endSrc = "series_estimate"; endConf = "low"; }
+              }
+              if (endTs) {
+                s.endDates.push(endTs);
+                s.endTsData.push({ ts: endTs, source: endSrc, confidence: endConf });
+                s.notionals.push(t.size ?? 0);
+              }
+              if (t.slug) s.sampleSlugs.add(t.slug);
             });
 
             // Build S4SeriesRow[]
@@ -1089,16 +1112,48 @@ export function registerRoutes(httpServer: Server, app: Express) {
               const firstTradeTs  = s.timestamps.length ? Math.min(...s.timestamps) : null;
               const lastTradeTs   = s.timestamps.length ? Math.max(...s.timestamps) : null;
 
-              // Median days to resolution: endDate - tradeTimestamp
-              let medianDaysToResolution: number | null = null;
-              if (s.endDates.length && s.timestamps.length) {
-                const maxEnd = Math.max(...s.endDates);
-                const daysArr = s.timestamps.map(ts => (maxEnd - ts) / 86400).filter(d => d > 0);
-                if (daysArr.length) {
-                  daysArr.sort((a, b) => a - b);
-                  medianDaysToResolution = daysArr[Math.floor(daysArr.length / 2)];
-                }
+              // ── Time enrichment ──────────────────────────────────────────
+              const medianOf = (arr: number[]) => {
+                if (!arr.length) return null;
+                const sorted = [...arr].sort((a,b)=>a-b);
+                return sorted[Math.floor(sorted.length/2)];
+              };
+              const pctOf = (arr: number[], p: number) => {
+                if (!arr.length) return null;
+                const sorted = [...arr].sort((a,b)=>a-b);
+                return sorted[Math.floor(sorted.length*p)];
+              };
+
+              const daysAll: number[] = [], daysHigh: number[] = [];
+              let capitalDays = 0, capitalDaysHighConf = 0;
+              s.endTsData.forEach((e, i) => {
+                const d = (e.ts - (s.timestamps[i] ?? 0)) / 86400;
+                if (d <= 0 || d > 3650) return;
+                const n = s.notionals[i] ?? 0;
+                daysAll.push(d);
+                capitalDays += n * d;
+                if (e.confidence !== "low") { daysHigh.push(d); capitalDaysHighConf += n * d; }
+              });
+
+              const weightedMedianDaysToResolution = (() => {
+                const pairs = s.endTsData
+                  .map((e,i) => ({ d:(e.ts-(s.timestamps[i]??0))/86400, w:s.notionals[i]??0 }))
+                  .filter(p=>p.d>0&&p.d<3650).sort((a,b)=>a.d-b.d);
+                const tw = pairs.reduce((s,p)=>s+p.w,0);
+                if (!tw) return null;
+                let cum=0; for (const p of pairs){cum+=p.w;if(cum>=tw/2)return p.d;} return null;
+              })();
+
+              const rb = { under1d:0,d1_to_7:0,d7_to_30:0,d30_to_90:0,over90d:0,
+                           unknown: Math.max(0,s.timestamps.length-daysAll.length) };
+              for (const d of daysAll) {
+                if (d<1) rb.under1d++; else if(d<7) rb.d1_to_7++;
+                else if(d<30) rb.d7_to_30++; else if(d<90) rb.d30_to_90++; else rb.over90d++;
               }
+              const res = daysAll.length||1;
+              const nearExpiryTradeShare   = rb.under1d/res;
+              const shortHorizonTradeShare = (rb.under1d+rb.d1_to_7)/res;
+              const longHorizonTradeShare  = (rb.d30_to_90+rb.over90d)/res;
 
               return {
                 seriesKey: s.seriesKey,
@@ -1118,8 +1173,18 @@ export function registerRoutes(httpServer: Server, app: Express) {
                 avgTradeSize,
                 firstTradeTs,
                 lastTradeTs,
-                medianDaysToResolution,
-                sampleSlugs: [...s.sampleSlugs].slice(0, 3),
+                medianDaysToResolution:         medianOf(daysAll),
+                medianDaysToResolutionHighConf: medianOf(daysHigh),
+                p25DaysToResolution:            pctOf(daysAll,0.25),
+                p75DaysToResolution:            pctOf(daysAll,0.75),
+                weightedMedianDaysToResolution,
+                nearExpiryTradeShare,
+                shortHorizonTradeShare,
+                longHorizonTradeShare,
+                capitalDays: capitalDays||null,
+                capitalDaysHighConf: capitalDaysHighConf||null,
+                resolutionBuckets: rb,
+                sampleSlugs: [...s.sampleSlugs].slice(0,3),
               };
             }).sort((a, b) => b.grossNotional - a.grossNotional);
 
@@ -1140,6 +1205,35 @@ export function registerRoutes(httpServer: Server, app: Express) {
             const top3Series   = seriesRows.slice(0, 3);
 
             // strongS4Candidate
+            // ── Wallet-level time aggregates ──────────────────────────
+            const walletCapitalDays    = seriesRows.reduce((s,r)=>s+(r.capitalDays??0),0)||null;
+            const walletCapDaysHigh    = seriesRows.reduce((s,r)=>s+(r.capitalDaysHighConf??0),0)||null;
+            const globalBuckets = {under1d:0,d1_to_7:0,d7_to_30:0,d30_to_90:0,over90d:0,unknown:0};
+            for (const r of seriesRows) {
+              const b = r.resolutionBuckets;
+              globalBuckets.under1d+=b.under1d; globalBuckets.d1_to_7+=b.d1_to_7;
+              globalBuckets.d7_to_30+=b.d7_to_30; globalBuckets.d30_to_90+=b.d30_to_90;
+              globalBuckets.over90d+=b.over90d; globalBuckets.unknown+=b.unknown;
+            }
+            const totalRes = globalBuckets.under1d+globalBuckets.d1_to_7+globalBuckets.d7_to_30+
+              globalBuckets.d30_to_90+globalBuckets.over90d||1;
+            const walletNearExpiry = globalBuckets.under1d/totalRes;
+            const walletShortH     = (globalBuckets.under1d+globalBuckets.d1_to_7)/totalRes;
+            const walletLongH      = (globalBuckets.d30_to_90+globalBuckets.over90d)/totalRes;
+            const pnlPerCapitalDay = walletCapitalDays&&(wallet.totalPnl??0)
+              ? (wallet.totalPnl??0)/walletCapitalDays : null;
+            // Wallet median: median of per-series medians
+            const seriesMeds = seriesRows.map(r=>r.medianDaysToResolution).filter((d):d is number=>d!=null);
+            seriesMeds.sort((a,b)=>a-b);
+            const walletMedianDays = seriesMeds.length ? seriesMeds[Math.floor(seriesMeds.length/2)] : null;
+            // Wallet weighted median: weight by grossNotional
+            const wPairs = seriesRows.filter(r=>r.weightedMedianDaysToResolution!=null)
+              .map(r=>({d:r.weightedMedianDaysToResolution!,w:r.grossNotional}))
+              .sort((a,b)=>a.d-b.d);
+            const wTot = wPairs.reduce((s,p)=>s+p.w,0);
+            let walletWeightedMedianDays: number|null = null;
+            if (wTot){let cum=0;for(const p of wPairs){cum+=p.w;if(cum>=wTot/2){walletWeightedMedianDays=p.d;break;}}}
+
             const strongS4Candidate =
               sportsTrades.length >= 5 &&
               (avgSportsBuyPrice ?? 0) >= 0.25 &&
@@ -1148,6 +1242,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
               (topSeries?.outcomesTraded ?? 0) >= 2 &&
               (topSeries?.hedgeRatio ?? 0) >= 0.65 &&
               maxSeriesConcentration >= 0.30;
+            const strongS4Short = (topSeries?.hedgeRatio??0)>=0.75 && walletShortH>=0.50;
+            const strongS4Long  = (topSeries?.hedgeRatio??0)>=0.75 && walletLongH>=0.50;
 
             // Post-filter: must have ≥1 series with ≥2 outcomes OR seriesHedgeRatio > 0.3
             const hasHedge = seriesRows.some(r => r.outcomesTraded >= 2 || r.hedgeRatio > 0.30);
@@ -1174,9 +1270,29 @@ export function registerRoutes(httpServer: Server, app: Express) {
               topSeriesOutcomeCount:          topSeries?.outcomesTraded ?? 0,
               topSeriesGrossNotional:         topSeries?.grossNotional ?? 0,
               topSeriesHedgeRatio:            topSeries?.hedgeRatio ?? 0,
-              topSeriesMedianDaysToResolution: topSeries?.medianDaysToResolution ?? null,
+              topSeriesMedianDaysToResolution:  topSeries?.medianDaysToResolution ?? null,
+              topSeriesWeightedMedianDays:      topSeries?.weightedMedianDaysToResolution ?? null,
+              topSeriesP25Days:                 topSeries?.p25DaysToResolution ?? null,
+              topSeriesP75Days:                 topSeries?.p75DaysToResolution ?? null,
+              topSeriesNearExpiry:              topSeries?.nearExpiryTradeShare ?? null,
+              topSeriesShortHorizon:            topSeries?.shortHorizonTradeShare ?? null,
+              topSeriesLongHorizon:             topSeries?.longHorizonTradeShare ?? null,
+              topSeriesResolutionBuckets:       topSeries?.resolutionBuckets ?? null,
+
+              medianDaysToResolution:           walletMedianDays,
+              weightedMedianDaysToResolution:   walletWeightedMedianDays,
+              nearExpiryTradeShare:             walletNearExpiry,
+              shortHorizonTradeShare:           walletShortH,
+              longHorizonTradeShare:            walletLongH,
+              capitalDays:                      walletCapitalDays,
+              capitalDaysHighConf:              walletCapDaysHigh,
+              pnlPerCapitalDay,
+              resolutionBuckets:                globalBuckets,
+
               seriesHedgeRatio,
               strongS4Candidate,
+              strongS4Short,
+              strongS4Long,
               priceBuckets,
               topMarkets,
               topSeries: top3Series,
