@@ -1288,15 +1288,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
             const s4Score   = Math.max(s4LongScore, s4ShortScore);
             const s4Subtype = s4LongScore >= s4ShortScore ? "long" : "short";
 
-            // Soft detector gate
-            // Fix 1: concentration lowered 0.40 → 0.30 (catches geniusMC @ 0.359)
-            // Fix 2: longHorizonTradeShare removed as standalone pass — it's a score
-            //        booster only; must always pair with structural hedge signal
+            // Detector gate — requires explicit cross-outcome hedge signal
+            // outcomes+price branch removed: it was passing long-only directional books
+            // Only real hedge signal (buy AND sell in same series) opens the gate
             const _hasHedgeSignal =
-              _hedgeRatio      >= 0.15 ||   // top series has some cross-outcome hedge
-              seriesHedgeRatio >= 0.10 ||   // overall wallet cross-series hedge
-              (_outcomeCount   >= 3 && (avgSportsBuyPrice ?? 0) >= 0.20 && (avgSportsBuyPrice ?? 0) <= 0.75);
-              // 3+ outcomes + mid-price = structural multi-outcome positioning
+              _hedgeRatio      >= 0.15 ||   // top series: ≥15% of notional cross-hedged
+              seriesHedgeRatio >= 0.10;     // wallet-level: cross-series hedge pattern
 
             const strongS4Candidate =
               sportsTrades.length >= 5 &&
