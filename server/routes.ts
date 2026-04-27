@@ -6,6 +6,7 @@ import {
   fetchLatestTrades,
   fetchWalletTrades,
   enrichTradesWithEndDate,
+  estimateEndDateFromTitle,
   fetchClosedPositionsForChart,
   buildWalletFromLeaderboard,
   aggregateWalletOnDemand,
@@ -820,7 +821,14 @@ export function registerRoutes(httpServer: Server, app: Express) {
           try {
             const rawTrades = await fetchWalletTrades(wallet.address, 300);
             // Enrich with endDate from gamma market API (cached)
-            const trades = await enrichTradesWithEndDate(rawTrades);
+            const enriched = await enrichTradesWithEndDate(rawTrades);
+            // Apply title-based heuristic for remaining unknown endDates
+            const trades = enriched.map(t =>
+              t.endDate ? t : {
+                ...t,
+                endDate: estimateEndDateFromTitle(t.title ?? "", t.timestamp) ?? undefined,
+              }
+            );
             const isUpDown = (title: string) => {
               const t = title.toLowerCase();
               return t.includes("up or down") || t.includes("up 5") || t.includes("up 1") ||
