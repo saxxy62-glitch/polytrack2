@@ -20,6 +20,8 @@ export interface RawTrade {
   transactionHash: string;
   icon: string;
   eventSlug: string;
+  endDate?: string;   // market expiry ISO timestamp from API
+  fpmm?: { endDate?: string };
 }
 
 export interface ClosedPosition {
@@ -72,6 +74,14 @@ export interface WalletAggregate {
   avgTradeSize: number;         // avg USDC per trade; small + few trades = low-liq sniper
   avgWeatherRatio: number;      // fraction of markets with weather keywords; >0.5 = weather bot
   avgUpDownRatio: number;       // fraction of trades on "Up or Down" crypto markets; >0.6 = crypto scalper
+  cryptoUpDownBuyPrice: number; // avg buy price on Up/Down crypto markets specifically
+  proximityBuckets: {           // S2: distribution of BUY trades by time-to-expiry
+    under1h: number;            // fraction of buys within 1h of market expiry
+    under6h: number;
+    under24h: number;
+    over24h: number;
+    unknown: number;            // trades where endDate not available
+  };
 }
 
 async function fetchJson(url: string): Promise<any> {
@@ -299,6 +309,46 @@ export function buildWalletFromLeaderboard(
     .slice(0, 5)
     .map(([title, data]) => ({ title, ...data }));
 
+
+  // ── S2 features: proximity-to-expiry + crypto up/down buy price ──────────
+  const isUpDown = (title: string) => {
+    const t = title.toLowerCase();
+    return (t.includes("up or down") || t.includes("up 5") || t.includes("up 1") ||
+            t.includes("down 5") || t.includes("down 1") || (t.includes("btc") && t.includes("%")) ||
+            (t.includes("eth") && t.includes("%")) || (t.includes("sol") && t.includes("%")));
+  };
+  const buyTradesAll = trades.filter(t => t.side === "BUY");
+  const upDownBuys = buyTradesAll.filter(t => isUpDown(t.title ?? ""));
+  const cryptoUpDownBuyPrice = upDownBuys.length > 0
+    ? upDownBuys.reduce((s, t) => s + (t.price ?? 0), 0) / upDownBuys.length
+    : 0;
+
+  // proximity: t.endDate or t.fpmm?.endDate
+  const getExpiry = (t: RawTrade): number | null => {
+    const raw = t.endDate || t.fpmm?.endDate;
+    if (!raw) return null;
+    const ts = new Date(raw).getTime();
+    return isNaN(ts) ? null : ts / 1000;
+  };
+  let pb_under1h = 0, pb_under6h = 0, pb_under24h = 0, pb_over24h = 0, pb_unknown = 0;
+  buyTradesAll.forEach(t => {
+    const expiry = getExpiry(t);
+    if (expiry === null) { pb_unknown++; return; }
+    const secsLeft = expiry - (t.timestamp ?? 0);
+    if (secsLeft < 3600)       pb_under1h++;
+    else if (secsLeft < 21600) pb_under6h++;
+    else if (secsLeft < 86400) pb_under24h++;
+    else                       pb_over24h++;
+  });
+  const pbTotal = buyTradesAll.length || 1;
+  const proximityBuckets = {
+    under1h:  pb_under1h  / pbTotal,
+    under6h:  pb_under6h  / pbTotal,
+    under24h: pb_under24h / pbTotal,
+    over24h:  pb_over24h  / pbTotal,
+    unknown:  pb_unknown  / pbTotal,
+  };
+
   return {
     address: entry.proxyWallet,
     pseudonym,
@@ -315,6 +365,8 @@ export function buildWalletFromLeaderboard(
     avgTradeSize,
     avgWeatherRatio,
     avgUpDownRatio,
+    cryptoUpDownBuyPrice,
+    proximityBuckets,
     winCount,
     lossCount,
     markets: [...categories],
