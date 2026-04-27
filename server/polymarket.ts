@@ -534,3 +534,28 @@ export function estimateEndDateFromTitle(title: string, tradeTimestamp: number):
   return null;
 }
 
+// ── Sports season end-date estimator ─────────────────────────────────────────
+// For season futures (EPL/UCL/NBA etc.) where gamma API returns no endDate,
+// derive resolution deadline from competition type and season year.
+export function estimateEndDateForSports(title: string, tradeTimestamp: number): string | null {
+  const t = title.toLowerCase();
+  const now = new Date(tradeTimestamp * 1000);
+  const yr  = now.getFullYear();
+  const seasonM = title.match(/20(\d{2})[\u2013\-\/](?:20)?(\d{2})\b/);
+  const endYr = seasonM ? parseInt(`20${seasonM[2]}`, 10) : null;
+
+  if (/premier league|\bepl\b|la liga|laliga|bundesliga|serie a|champions league|\bucl\b|europa league|\buel\b|ligue 1|eredivisie/i.test(t))
+    return new Date(`${endYr ?? yr + 1}-05-25T23:59:00Z`).toISOString();
+  if (/stanley cup|nhl playoffs|\bnhl\b/i.test(t))
+    return new Date(`${endYr ?? yr}-06-20T23:59:00Z`).toISOString();
+  if (/nba finals|nba championship|eastern conference|western conference/i.test(t))
+    return new Date(`${endYr ?? yr}-06-20T23:59:00Z`).toISOString();
+  if (/super bowl|nfl championship/i.test(t))
+    return new Date(`${endYr ?? yr}-02-15T23:59:00Z`).toISOString();
+  if (/world cup|euro 20\d{2}/i.test(t))
+    return new Date(`${endYr ?? yr}-07-15T23:59:00Z`).toISOString();
+  if (/ballon d|golden boot|\bmvp\b|cy young|coach of the year|rookie of the year/i.test(t))
+    return new Date(`${endYr ?? yr}-11-01T23:59:00Z`).toISOString();
+  return null;
+}
+
