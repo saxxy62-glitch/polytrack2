@@ -64,7 +64,7 @@ export default function S2Analysis() {
             S2 — Crypto Up/Down Scalper Analysis
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Кошельки торгующие BTC/ETH/SOL Up-or-Down рынками · avgUpDownRatio &gt; 25%
+            Кошельки торгующие BTC/ETH/SOL Up-or-Down рынками · реальный ratio &gt; 20% · endDate via Gamma API
           </p>
         </div>
       </div>
@@ -184,7 +184,7 @@ export default function S2Analysis() {
                     </td>
                     <td className="px-3 py-2 font-mono text-green">{pct(w.winRate ?? 0)}</td>
                     <td className="px-3 py-2 font-mono text-green">{fmtK(w.totalPnl ?? 0)}</td>
-                    <td className="px-3 py-2 font-mono text-yellow font-semibold">{pct(w.avgUpDownRatio ?? 0)}</td>
+                    <td className="px-3 py-2 font-mono text-yellow font-semibold">{pct(w.realUpDownRatio ?? w.avgUpDownRatio ?? 0)}</td>
                     <td className="px-3 py-2 font-mono">{w.upDownBuyCount ?? 0}B / {w.upDownSellCount ?? 0}S</td>
                     <td className="px-3 py-2 font-mono">¢{((w.avgUpDownBuyPrice ?? 0)*100).toFixed(0)}</td>
                     <td className="px-3 py-2 font-mono">{w.priceBuckets?.["0.95-0.99"] ?? 0}</td>
@@ -202,9 +202,9 @@ export default function S2Analysis() {
 
       <div className="mt-4 p-4 bg-yellow/5 border border-yellow/20 rounded-lg">
         <p className="text-xs text-muted-foreground">
-          <span className="text-yellow font-semibold">S2 Feasibility:</span>{" "}
+          <span className="text-yellow font-semibold">⏳ Первая загрузка занимает ~15–30 сек — идёт обогащение trades через Gamma API (endDate кэшируется).</p><p className="text-xs text-muted-foreground mt-1"><span className="text-yellow font-semibold">S2 Feasibility:</span>{" "}
           Если &lt;1h% высокий + avg buy ¢95+ — near-expiry скальпинг подтверждён. Если unknown% высокий —
-          Polymarket API не возвращает endDate, proximity нужно считать через отдельный market lookup.
+          Polymarket API не возвращает endDate — теперь используем Gamma API с кэшем.
         </p>
       </div>
     </div>
