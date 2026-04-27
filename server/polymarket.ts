@@ -424,8 +424,6 @@ export async function aggregateWalletOnDemand(address: string): Promise<WalletAg
 }
 
 // ─── Market endDate cache + enrichment ──────────────────────────────────────
-const endDateCache = new Map<string, string | null>(); // conditionId -> ISO date or null
-
 // endDate cache by conditionId AND by tokenId (asset)
 const endDateCache    = new Map<string, string | null>(); // conditionId → ISO or null
 const assetEndDateMap = new Map<string, string | null>(); // tokenId/asset → ISO or null
