@@ -79,14 +79,26 @@ function WalletRow({ w }: { w: any }) {
         <td className="px-3 py-2 text-xs text-muted-foreground max-w-[120px] truncate" title={w.topSeriesLabel??""}>{w.topSeriesLabel??"—"}</td>
         <td className="px-3 py-2 font-mono text-xs">{w.topSeriesOutcomeCount}</td>
         <td className="px-3 py-2 font-mono text-xs font-semibold" style={{color:hclr(w.topSeriesHedgeRatio??0)}}>{pct(w.topSeriesHedgeRatio)}</td>
-        {/* Time columns */}
-        <td className="px-3 py-2 font-mono text-xs">{days(w.medianDaysToResolution)}</td>
-        <td className="px-3 py-2 font-mono text-xs">{days(w.weightedMedianDaysToResolution)}</td>
-        <td className="px-3 py-2 font-mono text-xs text-orange">{pct(w.nearExpiryTradeShare)}</td>
-        <td className="px-3 py-2 font-mono text-xs text-yellow">{pct(w.shortHorizonTradeShare)}</td>
-        <td className="px-3 py-2 font-mono text-xs text-blue">{pct(w.longHorizonTradeShare)}</td>
-        <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
-          {w.pnlPerCapitalDay != null ? `$${w.pnlPerCapitalDay.toFixed(2)}` : "—"}
+        {/* Time + capital columns */}
+        <td className="px-3 py-2 font-mono text-xs">
+          {w.weightedMedianDaysToResolution != null
+            ? <span className="text-blue">{w.weightedMedianDaysToResolution.toFixed(0)}d</span>
+            : <span className="text-[10px] text-muted-foreground italic">no endDate</span>}
+        </td>
+        <td className="px-3 py-2 font-mono text-xs text-orange">
+          {w.nearExpiryTradeShare != null ? pct(w.nearExpiryTradeShare)
+            : <span className="text-[10px] text-muted-foreground italic">—</span>}
+        </td>
+        <td className="px-3 py-2 font-mono text-xs text-blue">
+          {w.longHorizonTradeShare != null ? pct(w.longHorizonTradeShare)
+            : <span className="text-[10px] text-muted-foreground italic">—</span>}
+        </td>
+        <td className="px-3 py-2 font-mono text-xs">
+          {w.pnlPerCapitalDay != null
+            ? <span className={w.pnlPerCapitalDay > 0 ? "text-green" : "text-red-400"}>
+                ${w.pnlPerCapitalDay.toFixed(3)}
+              </span>
+            : <span className="text-[10px] text-muted-foreground italic">no endDate</span>}
         </td>
         <td className="px-3 py-2 font-mono text-xs">
           {w.s4Score != null ? (
@@ -98,7 +110,7 @@ function WalletRow({ w }: { w: any }) {
       </tr>
       {open && w.topSeries?.length>0 && (
         <tr className="border-b border-border/20">
-          <td colSpan={15} className="px-6 py-2 bg-surface-2/30">
+          <td colSpan={13} className="px-6 py-2 bg-surface-2/30">
             <p className="text-[10px] text-muted-foreground mb-1 font-medium uppercase tracking-wider">Series Drilldown</p>
             <table className="w-full">
               <thead><tr className="border-b border-border/30">
@@ -365,7 +377,7 @@ export default function S4Analysis() {
                 <tr>
                   <th className="w-5 px-2 py-2"/>
                   {["Wallet","PnL","Avg Buy","Avg Size","Series","Top Series","Outcomes","Hedge%",
-                    "Median d","W.Med d","Near-exp%","Short%","Long%","PnL/cap-d","Score"].map(h=>(
+                    "W.Med d","Near%","Long%","PnL/cap·d","Score"].map(h=>(
                     <th key={h} className="text-left px-3 py-2 text-muted-foreground font-medium whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
