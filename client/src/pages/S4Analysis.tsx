@@ -131,6 +131,10 @@ export default function S4Analysis() {
     over90d:  w.resolutionBuckets?.over90d  ?? 0,
   }));
 
+  // Archetype labels for top 3 strongS4Long wallets
+  const archetypes = ["Seasonal Book", "Cross-Outcome Hedge", "Baseline S4Long"];
+  const strongLong = wallets.filter((w:any) => w.strongS4Long).slice(0, 3);
+
   // Scatter: hedgeRatio vs weightedMedianDays
   const scatterData = wallets
     .filter((w:any)=>w.weightedMedianDaysToResolution!=null && w.topSeriesHedgeRatio!=null)
@@ -192,6 +196,84 @@ export default function S4Analysis() {
           </div>
         ))}
       </div>
+
+      {/* ── Top S4Long Candidates — Comparative Cards ─────────────── */}
+      {strongLong.length > 0 && (
+        <div className="mb-5">
+          <h2 className="text-sm font-medium mb-3 flex items-center gap-2">
+            <Shield className="w-4 h-4 text-blue"/>
+            Top S4Long Candidates — Capital Efficiency
+          </h2>
+          <div className="grid gap-4" style={{gridTemplateColumns:`repeat(${Math.min(strongLong.length,3)},1fr)`}}>
+            {strongLong.map((w:any, i:number) => {
+              const annualizedRoic = w.pnlPerCapitalDay != null ? w.pnlPerCapitalDay * 365 : null;
+              const archetype = archetypes[i] ?? "S4Long";
+              const seriesWMed = w.topSeriesWeightedMedianDays;
+              return (
+                <div key={w.address} className="bg-surface-1 border border-border rounded-lg p-4 relative overflow-hidden">
+                  {/* Archetype badge */}
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[10px] uppercase tracking-wider font-semibold text-blue px-2 py-0.5 bg-blue/10 rounded-full">
+                      {archetype}
+                    </span>
+                    <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded ${
+                      w.s4Score>=75?"bg-green/15 text-green":w.s4Score>=60?"bg-yellow/15 text-yellow":"bg-orange/15 text-orange"
+                    }`}>score {w.s4Score}</span>
+                  </div>
+
+                  {/* Wallet name */}
+                  <Link href={`/wallet/${w.address}`}
+                    className="text-cyan hover:text-cyan/80 font-semibold text-sm block mb-3 truncate">
+                    {w.name || w.address?.slice(0,14)}
+                  </Link>
+
+                  {/* 7 key metrics */}
+                  <div className="space-y-2">
+                    {[
+                      { label: "Top Series Hedge",      val: w.topSeriesHedgeRatio   != null ? `${(w.topSeriesHedgeRatio*100).toFixed(0)}%`  : "—", color: w.topSeriesHedgeRatio>=0.5?"text-green":"text-yellow" },
+                      { label: "Top Series Notional",   val: w.topSeriesGrossNotional!= null ? fmtK(w.topSeriesGrossNotional)                : "—", color: "" },
+                      { label: "W.Med Days (series)",   val: seriesWMed              != null ? `${seriesWMed.toFixed(0)}d`                   : "—", color: "text-blue" },
+                      { label: "W.Med Days (wallet)",   val: w.weightedMedianDaysToResolution != null ? `${w.weightedMedianDaysToResolution.toFixed(0)}d` : "—", color: "text-muted-foreground" },
+                      { label: "Capital-Days",          val: w.capitalDays           != null ? fmtK(w.capitalDays)                           : "—", color: "" },
+                      { label: "PnL / Capital-Day",     val: w.pnlPerCapitalDay      != null ? `$${w.pnlPerCapitalDay.toFixed(3)}`           : "—", color: w.pnlPerCapitalDay>0?"text-green":"text-red-400" },
+                      { label: "Annualized ROIC proxy", val: annualizedRoic          != null ? `${(annualizedRoic*100).toFixed(1)}%/yr`      : "—", color: annualizedRoic!=null&&annualizedRoic>0?"text-green font-bold":"text-muted-foreground" },
+                    ].map(({label,val,color})=>(
+                      <div key={label} className="flex justify-between items-baseline">
+                        <span className="text-[11px] text-muted-foreground">{label}</span>
+                        <span className={`text-xs font-mono ${color}`}>{val}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Horizon bar */}
+                  <div className="mt-3 pt-3 border-t border-border/40">
+                    <p className="text-[10px] text-muted-foreground mb-1.5">Horizon profile</p>
+                    <div className="flex h-2 rounded-full overflow-hidden gap-px">
+                      {w.resolutionBuckets && Object.entries(BUCKET_COLORS).filter(([k])=>k!=="unknown").map(([k,clr])=>{
+                        const n = w.resolutionBuckets[k]??0;
+                        const total = Object.entries(w.resolutionBuckets).filter(([kk])=>kk!=="unknown").reduce((s:number,[,v])=>s+(v as number),0)||1;
+                        return n>0 ? <div key={k} style={{width:`${(n/total)*100}%`,background:clr}} title={`${BUCKET_LABELS[k]}: ${n}`}/> : null;
+                      })}
+                    </div>
+                    <div className="flex justify-between mt-1 text-[9px] text-muted-foreground">
+                      <span className="text-red-400">&lt;1d {w.resolutionBuckets?.under1d??0}</span>
+                      <span className="text-yellow-400">1–7d {w.resolutionBuckets?.d1_to_7??0}</span>
+                      <span className="text-blue-400">30–90d {w.resolutionBuckets?.d30_to_90??0}</span>
+                      <span className="text-blue-300">&gt;90d {w.resolutionBuckets?.over90d??0}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {/* Interpretation note */}
+          <p className="text-[11px] text-muted-foreground mt-2">
+            <span className="text-foreground font-medium">Annualized ROIC proxy</span> = pnlPerCapitalDay × 365 &nbsp;·&nbsp;
+            Units: (USD PnL) / (USD × day) × 365 = dimensionless rate &nbsp;·&nbsp;
+            <span className="text-muted-foreground">W.Med Days (series) reflects the specific tournament economics; wallet-level aggregates all series.</span>
+          </p>
+        </div>
+      )}
 
       {/* Charts row */}
       <div className="grid grid-cols-3 gap-4 mb-5">
