@@ -1,26 +1,116 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
-import { ArrowLeft, Trophy, TrendingUp, Shield } from "lucide-react";
+import { ArrowLeft, Trophy, TrendingUp, Shield, ChevronDown, ChevronRight } from "lucide-react";
 
 const fmtK = (n: number) => {
+  if (n == null) return "—";
   if (Math.abs(n) >= 1_000_000) return `$${(n/1_000_000).toFixed(1)}M`;
   if (Math.abs(n) >= 1_000)     return `$${(n/1_000).toFixed(1)}K`;
   return `$${n.toFixed(0)}`;
 };
-const pct = (n: number) => `${(n * 100).toFixed(0)}%`;
-const c   = (n: number) => `¢${(n * 100).toFixed(0)}`;
+const pct  = (n: number | null | undefined) => n == null ? "—" : `${(n * 100).toFixed(0)}%`;
+const c    = (n: number | null | undefined) => n == null ? "—" : `¢${(n * 100).toFixed(0)}`;
+const days = (n: number | null | undefined) => n == null ? "—" : `${n.toFixed(0)}d`;
 
 const PRICE_COLORS: Record<string, string> = {
-  "under0.35": "#6b7280",
-  "0.35-0.50": "#3b82f6",
-  "0.50-0.65": "#8b5cf6",
-  "0.65-0.80": "#f59e0b",
-  "0.80-0.95": "#f97316",
-  "0.95+":     "#dc2626",
+  under0_35:    "#6b7280",
+  p0_35_to_0_50:"#3b82f6",
+  p0_50_to_0_65:"#8b5cf6",
+  p0_65_to_0_80:"#f59e0b",
+  p0_80_to_0_95:"#f97316",
+  p0_95_plus:   "#dc2626",
 };
+const PRICE_LABELS: Record<string, string> = {
+  under0_35:    "<¢35",
+  p0_35_to_0_50:"¢35–50",
+  p0_50_to_0_65:"¢50–65",
+  p0_65_to_0_80:"¢65–80",
+  p0_80_to_0_95:"¢80–95",
+  p0_95_plus:   "¢95+",
+};
+
+function SeriesRow({ s }: { s: any }) {
+  return (
+    <tr className="border-b border-border/30 hover:bg-surface-2/50 text-xs">
+      <td className="px-3 py-1.5 font-mono text-muted-foreground max-w-[160px] truncate" title={s.sampleMarketTitle}>
+        {s.seriesLabel}
+      </td>
+      <td className="px-3 py-1.5 font-mono">{s.outcomesTraded}</td>
+      <td className="px-3 py-1.5 font-mono">{s.marketsTraded}</td>
+      <td className="px-3 py-1.5 font-mono">{fmtK(s.grossNotional)}</td>
+      <td className="px-3 py-1.5 font-mono text-blue">{c(s.avgBuyPrice)}</td>
+      <td className="px-3 py-1.5 font-mono" style={{ color: `hsl(${Math.round(s.hedgeRatio*120)},70%,55%)` }}>
+        {pct(s.hedgeRatio)}
+      </td>
+      <td className="px-3 py-1.5 font-mono text-muted-foreground">{days(s.medianDaysToResolution)}</td>
+    </tr>
+  );
+}
+
+function WalletRow({ w }: { w: any }) {
+  const [expanded, setExpanded] = useState(false);
+  const isStrong = w.strongS4Candidate;
+  return (
+    <>
+      <tr
+        className={`border-b border-border/50 hover:bg-surface-2 transition-colors cursor-pointer ${isStrong ? "bg-yellow/5" : ""}`}
+        onClick={() => setExpanded(e => !e)}
+      >
+        <td className="px-3 py-2 w-5">
+          {w.topSeries?.length > 0
+            ? (expanded ? <ChevronDown className="w-3 h-3 text-muted-foreground" /> : <ChevronRight className="w-3 h-3 text-muted-foreground" />)
+            : null}
+        </td>
+        <td className="px-3 py-2">
+          <div className="flex items-center gap-1.5">
+            {isStrong && <span className="text-yellow text-[10px] font-bold">★</span>}
+            <Link href={`/wallet/${w.address}`} className="text-cyan hover:text-cyan/80 font-medium text-xs"
+              onClick={e => e.stopPropagation()}>
+              {w.name || w.address?.slice(0, 10)}
+            </Link>
+          </div>
+        </td>
+        <td className="px-3 py-2 font-mono text-xs text-green">{fmtK(w.totalPnl ?? 0)}</td>
+        <td className="px-3 py-2 font-mono text-xs text-blue">{c(w.avgSportsBuyPrice)}</td>
+        <td className="px-3 py-2 font-mono text-xs">{fmtK(w.avgSportsTradeSize)}</td>
+        <td className="px-3 py-2 font-mono text-xs">{w.seriesCount}</td>
+        <td className="px-3 py-2 text-xs text-muted-foreground max-w-[140px] truncate" title={w.topSeriesLabel ?? ""}>
+          {w.topSeriesLabel ?? "—"}
+        </td>
+        <td className="px-3 py-2 font-mono text-xs">{w.topSeriesOutcomeCount}</td>
+        <td className="px-3 py-2 font-mono text-xs font-semibold"
+          style={{ color: `hsl(${Math.round((w.topSeriesHedgeRatio ?? 0)*120)},70%,55%)` }}>
+          {pct(w.topSeriesHedgeRatio)}
+        </td>
+        <td className="px-3 py-2 font-mono text-xs">{fmtK(w.topSeriesGrossNotional)}</td>
+        <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{days(w.topSeriesMedianDaysToResolution)}</td>
+      </tr>
+      {expanded && w.topSeries?.length > 0 && (
+        <tr className="border-b border-border/30">
+          <td colSpan={11} className="px-6 py-2 bg-surface-2/30">
+            <p className="text-[10px] text-muted-foreground mb-1 font-medium uppercase tracking-wider">Top Series Drilldown</p>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border/30">
+                  {["Series","Outcomes","Markets","Gross $","Avg Buy","Hedge%","Median Days"].map(h => (
+                    <th key={h} className="text-left px-3 py-1 text-muted-foreground font-medium text-[10px]">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {w.topSeries.map((s: any) => <SeriesRow key={s.seriesKey} s={s} />)}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
 
 export default function S4Analysis() {
   const { data, isLoading } = useQuery<any>({
@@ -28,31 +118,33 @@ export default function S4Analysis() {
     refetchInterval: 120_000,
   });
 
-  const wallets  = data?.s4Wallets ?? [];
-  const summary  = data?.summary   ?? {};
+  const wallets = data?.s4Wallets  ?? [];
+  const summary = data?.summary    ?? {};
 
-  // Aggregate price buckets across all S4 wallets
+  // Aggregate price buckets
   const globalPrice: Record<string, number> = {
-    "under0.35": 0, "0.35-0.50": 0, "0.50-0.65": 0,
-    "0.65-0.80": 0, "0.80-0.95": 0, "0.95+": 0,
+    under0_35: 0, p0_35_to_0_50: 0, p0_50_to_0_65: 0,
+    p0_65_to_0_80: 0, p0_80_to_0_95: 0, p0_95_plus: 0,
   };
   wallets.forEach((w: any) =>
     Object.entries(w.priceBuckets ?? {}).forEach(([k, v]) => {
       globalPrice[k] = (globalPrice[k] ?? 0) + (v as number);
     })
   );
-  const priceData = Object.entries(globalPrice).map(([price, count]) => ({ price, count }));
+  const priceData = Object.entries(globalPrice).map(([key, count]) => ({
+    price: PRICE_LABELS[key] ?? key, count, key,
+  }));
 
   // Hedge ratio distribution
   const hedgeBuckets = [
-    { label: "0–25%",  count: wallets.filter((w: any) => w.hedgeRatio < 0.25).length },
-    { label: "25–50%", count: wallets.filter((w: any) => w.hedgeRatio >= 0.25 && w.hedgeRatio < 0.50).length },
-    { label: "50–75%", count: wallets.filter((w: any) => w.hedgeRatio >= 0.50 && w.hedgeRatio < 0.75).length },
-    { label: "75–100%",count: wallets.filter((w: any) => w.hedgeRatio >= 0.75).length },
+    { label: "0–25%",  count: wallets.filter((w: any) => (w.topSeriesHedgeRatio ?? 0) < 0.25).length },
+    { label: "25–50%", count: wallets.filter((w: any) => (w.topSeriesHedgeRatio ?? 0) >= 0.25 && (w.topSeriesHedgeRatio ?? 0) < 0.50).length },
+    { label: "50–75%", count: wallets.filter((w: any) => (w.topSeriesHedgeRatio ?? 0) >= 0.50 && (w.topSeriesHedgeRatio ?? 0) < 0.75).length },
+    { label: "75–100%",count: wallets.filter((w: any) => (w.topSeriesHedgeRatio ?? 0) >= 0.75).length },
   ];
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6">
+    <div className="max-w-7xl mx-auto px-4 py-6">
       <div className="flex items-center gap-3 mb-6">
         <Link href="/" className="text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-4 h-4" />
@@ -60,10 +152,10 @@ export default function S4Analysis() {
         <div>
           <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <Trophy className="w-5 h-5 text-yellow" />
-            S4 — Seasonal Sports Arb Analysis
+            S4 — Seasonal Sports Series-Hedge Detector
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Сезонный спортивный арбитраж · вход ¢35–¢72 · хеджирование YES/NO · крупный капитал
+            Семантический hedge ratio · series key нормализация · strongS4 = hedge≥75% + outcomes≥2 + size≥$10K
           </p>
         </div>
       </div>
@@ -71,10 +163,10 @@ export default function S4Analysis() {
       {/* KPI */}
       <div className="grid grid-cols-4 gap-3 mb-6">
         {[
-          { label: "S4 кошельков",        value: String(summary.withSportsTrades ?? "—"),                                      icon: <Trophy className="w-4 h-4 text-yellow" /> },
-          { label: "Avg Hedge Ratio",      value: summary.avgHedgeRatio != null ? pct(summary.avgHedgeRatio) : "—",            icon: <Shield className="w-4 h-4 text-blue" /> },
-          { label: "Avg Sports Buy Price", value: summary.avgSportsBuyPrice != null ? c(summary.avgSportsBuyPrice) : "—",      icon: <TrendingUp className="w-4 h-4 text-green" /> },
-          { label: "Кандидатов отсканировано", value: String(summary.totalScanned ?? "—"),                                     icon: <TrendingUp className="w-4 h-4 text-muted-foreground" /> },
+          { label: "S4 Candidates",       value: String(summary.s4Candidates       ?? "—"), icon: <Trophy className="w-4 h-4 text-yellow" /> },
+          { label: "Strong S4 ★",         value: String(summary.strongS4Candidates ?? "—"), icon: <Shield className="w-4 h-4 text-green" /> },
+          { label: "Avg Series Hedge",     value: summary.avgHedgeRatio   != null ? pct(summary.avgHedgeRatio)   : "—", icon: <Shield className="w-4 h-4 text-blue" /> },
+          { label: "Avg Sports Buy Price", value: summary.avgSportsBuyPrice != null ? c(summary.avgSportsBuyPrice) : "—", icon: <TrendingUp className="w-4 h-4 text-muted-foreground" /> },
         ].map(({ label, value, icon }) => (
           <div key={label} className="bg-surface-1 border border-border rounded-lg p-4 flex items-center gap-3">
             {icon}
@@ -89,31 +181,26 @@ export default function S4Analysis() {
       {/* Charts */}
       <div className="grid grid-cols-2 gap-4 mb-6">
         <div className="bg-surface-1 border border-border rounded-lg p-4">
-          <h2 className="text-sm font-medium text-foreground mb-1">Цена входа на спортивных рынках</h2>
-          <p className="text-xs text-muted-foreground mb-3">
-            S4 ядро: покупки по ¢35–¢65 задолго до финала сезона
-          </p>
-          <ResponsiveContainer width="100%" height={160}>
+          <h2 className="text-sm font-medium mb-1">Цена входа на спортивных рынках</h2>
+          <p className="text-xs text-muted-foreground mb-3">S4 ядро: покупки по ¢35–¢65 задолго до разрешения</p>
+          <ResponsiveContainer width="100%" height={150}>
             <BarChart data={priceData}>
-              <XAxis dataKey="price" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} />
+              <XAxis dataKey="price" tick={{ fontSize: 9 }} />
+              <YAxis tick={{ fontSize: 9 }} />
               <Tooltip formatter={(v: number) => [`${v} трейдов`]} />
               <Bar dataKey="count" radius={[4,4,0,0]}>
-                {priceData.map(e => <Cell key={e.price} fill={PRICE_COLORS[e.price] ?? "#6b7280"} />)}
+                {priceData.map(e => <Cell key={e.key} fill={PRICE_COLORS[e.key] ?? "#6b7280"} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
-
         <div className="bg-surface-1 border border-border rounded-lg p-4">
-          <h2 className="text-sm font-medium text-foreground mb-1">Hedge Ratio распределение</h2>
-          <p className="text-xs text-muted-foreground mb-3">
-            Доля рынков где трейдер купил И продал — признак хеджирования YES+NO
-          </p>
-          <ResponsiveContainer width="100%" height={160}>
+          <h2 className="text-sm font-medium mb-1">Top-Series Hedge Ratio</h2>
+          <p className="text-xs text-muted-foreground mb-3">75–100% = confirmed series hedge (S4 strongCandidate)</p>
+          <ResponsiveContainer width="100%" height={150}>
             <BarChart data={hedgeBuckets}>
-              <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} />
+              <XAxis dataKey="label" tick={{ fontSize: 9 }} />
+              <YAxis tick={{ fontSize: 9 }} />
               <Tooltip formatter={(v: number) => [`${v} кошельков`]} />
               <Bar dataKey="count" fill="var(--color-blue)" radius={[4,4,0,0]} />
             </BarChart>
@@ -121,10 +208,11 @@ export default function S4Analysis() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Main table */}
       <div className="bg-surface-1 border border-border rounded-lg overflow-hidden">
-        <div className="px-4 py-3 border-b border-border">
-          <h2 className="text-sm font-medium text-foreground">S4 Кошельки — детальная таблица</h2>
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+          <h2 className="text-sm font-medium">S4 Кошельки · нажми строку для drilldown серий</h2>
+          <span className="text-xs text-muted-foreground">★ = strongS4Candidate</span>
         </div>
         {isLoading ? (
           <div className="p-8 text-center text-muted-foreground text-sm">Загрузка...</div>
@@ -135,32 +223,14 @@ export default function S4Analysis() {
             <table className="w-full text-xs">
               <thead className="border-b border-border bg-surface-2">
                 <tr>
-                  {["Кошелёк","WR","PnL","Sports трейды","Avg Buy¢","Avg Sell¢","Avg Size","Hedge%","Рынков","Топ рынок"].map(h => (
+                  <th className="w-5 px-3 py-2" />
+                  {["Кошелёк","PnL","Avg Buy","Avg Size","Серий","Top Series","Outcomes","Hedge%","Gross $","Median Days"].map(h => (
                     <th key={h} className="text-left px-3 py-2 text-muted-foreground font-medium whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {wallets.map((w: any) => (
-                  <tr key={w.address} className="border-b border-border/50 hover:bg-surface-2 transition-colors">
-                    <td className="px-3 py-2">
-                      <Link href={`/wallet/${w.address}`} className="text-cyan hover:text-cyan/80 font-medium">
-                        {w.name || w.address?.slice(0,10)}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-2 font-mono text-green">{pct(w.winRate ?? 0)}</td>
-                    <td className="px-3 py-2 font-mono text-green">{fmtK(w.totalPnl ?? 0)}</td>
-                    <td className="px-3 py-2 font-mono">{w.sportsBuyCount ?? 0}B / {w.sportsSellCount ?? 0}S</td>
-                    <td className="px-3 py-2 font-mono text-blue">{c(w.avgSportsBuyPrice ?? 0)}</td>
-                    <td className="px-3 py-2 font-mono text-orange">{c(w.avgSportsSellPrice ?? 0)}</td>
-                    <td className="px-3 py-2 font-mono">{fmtK(w.avgSportsTradeSize ?? 0)}</td>
-                    <td className="px-3 py-2 font-mono text-yellow font-semibold">{pct(w.hedgeRatio ?? 0)}</td>
-                    <td className="px-3 py-2 font-mono">{w.totalMarkets ?? 0}</td>
-                    <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate">
-                      {w.topMarkets?.[0]?.title?.slice(0, 40) ?? "—"}
-                    </td>
-                  </tr>
-                ))}
+                {wallets.map((w: any) => <WalletRow key={w.address} w={w} />)}
               </tbody>
             </table>
           </div>
@@ -170,9 +240,10 @@ export default function S4Analysis() {
       <div className="mt-4 p-4 bg-blue/5 border border-blue/20 rounded-lg">
         <p className="text-xs text-muted-foreground">
           <span className="text-blue font-semibold">S4 Логика:</span>{" "}
-          Покупает YES команды A по ¢40 + хеджирует SELL YES команды B по ¢60.
-          Итого вход: ¢40 + ¢40 = ¢80. Выплата: $1.00. Маржа ¢20.
-          Hedge Ratio {">"} 50% = подтверждённый хедж. Avg Buy ¢35–¢55 = типичный вход до старта сезона.
+          Кошелёк покупает YES нескольких взаимоисключающих исходов одной серии (напр. EPL winner).
+          seriesHedgeRatio = 1 − |buyNotional − sellNotional| / grossNotional.
+          strongS4: hedge≥75% + outcomes≥2 + avgBuy ¢30–¢70 + avgSize≥$10K + concentration≥40%.
+          Нажми строку чтобы увидеть drilldown по сериям.
         </p>
       </div>
     </div>
