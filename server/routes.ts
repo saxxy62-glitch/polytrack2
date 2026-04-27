@@ -592,7 +592,31 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
 
     const pnlHistory = storage.getPnlHistory(address);
-    const recentTrades = storage.getTopWalletTrades(address, 50);
+    let recentTrades = storage.getTopWalletTrades(address, 50);
+
+    // If no trades in storage (wallet not seen in live feed yet), fetch from API
+    if (recentTrades.length === 0) {
+      try {
+        const apiTrades = await fetchWalletTrades(address, 50);
+        recentTrades = apiTrades.map(t => ({
+          id: t.transactionHash || `${t.timestamp}-${t.asset}`,
+          proxyWallet: address,
+          side: t.side,
+          asset: t.asset,
+          conditionId: t.conditionId,
+          size: t.size,
+          price: t.price,
+          timestamp: t.timestamp,
+          title: t.title,
+          slug: t.slug,
+          outcome: t.outcome,
+          name: t.name,
+          pseudonym: t.pseudonym,
+        }));
+      } catch (e) {
+        console.error("Failed to fetch trades from API:", e);
+      }
+    }
 
     res.json({ ...wallet, pnlHistory, recentTrades });
   });
