@@ -422,3 +422,40 @@ export async function aggregateWalletOnDemand(address: string): Promise<WalletAg
     return null;
   }
 }
+
+// ─── Market endDate cache + enrichment ──────────────────────────────────────
+const endDateCache = new Map<string, string | null>(); // conditionId -> ISO date or null
+
+async function fetchMarketEndDate(conditionId: string): Promise<string | null> {
+  if (endDateCache.has(conditionId)) return endDateCache.get(conditionId)!;
+  try {
+    const data = await fetchJson(
+      `https://gamma-api.polymarket.com/markets?conditionId=${conditionId}`
+    );
+    const markets = Array.isArray(data) ? data : (data?.markets ?? []);
+    const endDate = markets[0]?.endDate ?? markets[0]?.end_date ?? null;
+    endDateCache.set(conditionId, endDate);
+    return endDate;
+  } catch {
+    endDateCache.set(conditionId, null);
+    return null;
+  }
+}
+
+export async function enrichTradesWithEndDate(trades: RawTrade[]): Promise<RawTrade[]> {
+  // Collect unique conditionIds that don't have endDate yet
+  const missing = [...new Set(
+    trades.filter(t => !t.endDate && t.conditionId).map(t => t.conditionId)
+  )];
+  // Fetch in parallel with concurrency limit of 5
+  const CHUNK = 5;
+  for (let i = 0; i < missing.length; i += CHUNK) {
+    await Promise.all(missing.slice(i, i + CHUNK).map(fetchMarketEndDate));
+  }
+  // Annotate trades
+  return trades.map(t => ({
+    ...t,
+    endDate: t.endDate ?? endDateCache.get(t.conditionId) ?? undefined,
+  }));
+}
+
