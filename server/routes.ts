@@ -8,6 +8,7 @@ import {
   fetchWalletTrades,
   enrichTradesWithEndDate,
   estimateEndDateFromTitle,
+  estimateEndDateForSports,
   fetchClosedPositionsForChart,
   buildWalletFromLeaderboard,
   aggregateWalletOnDemand,
@@ -824,12 +825,15 @@ export function registerRoutes(httpServer: Server, app: Express) {
             // Enrich with endDate from gamma market API (cached)
             const enriched = await enrichTradesWithEndDate(rawTrades);
             // Apply title-based heuristic for remaining unknown endDates
-            const trades = enriched.map(t =>
-              t.endDate ? t : {
-                ...t,
-                endDate: estimateEndDateFromTitle(t.title ?? "", t.timestamp) ?? undefined,
-              }
-            );
+            const trades = enriched.map(t => {
+              if (t.endDate) return t;
+              // For sports season futures → season-aware end-date estimator
+              const sportsEnd = estimateEndDateForSports(t.title ?? "", t.timestamp ?? 0);
+              if (sportsEnd) return { ...t, endDate: sportsEnd };
+              // Fallback for Up/Down short-horizon markets
+              const shortEnd = estimateEndDateFromTitle(t.title ?? "", t.timestamp ?? 0);
+              return { ...t, endDate: shortEnd ?? undefined };
+            });
             const isUpDown = (title: string) => {
               const t = title.toLowerCase();
               return t.includes("up or down") || t.includes("up 5") || t.includes("up 1") ||
@@ -1137,13 +1141,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
             // strongS4Candidate
             const strongS4Candidate =
-              sportsTrades.length >= 10 &&
-              (avgSportsBuyPrice ?? 0) >= 0.30 &&
-              (avgSportsBuyPrice ?? 0) <= 0.70 &&
-              (avgSportsTradeSize ?? 0) >= 10_000 &&
+              sportsTrades.length >= 5 &&
+              (avgSportsBuyPrice ?? 0) >= 0.25 &&
+              (avgSportsBuyPrice ?? 0) <= 0.80 &&
+              (avgSportsTradeSize ?? 0) >= 1_000 &&
               (topSeries?.outcomesTraded ?? 0) >= 2 &&
-              (topSeries?.hedgeRatio ?? 0) >= 0.75 &&
-              maxSeriesConcentration >= 0.40;
+              (topSeries?.hedgeRatio ?? 0) >= 0.65 &&
+              maxSeriesConcentration >= 0.30;
 
             // Post-filter: must have ≥1 series with ≥2 outcomes OR seriesHedgeRatio > 0.3
             const hasHedge = seriesRows.some(r => r.outcomesTraded >= 2 || r.hedgeRatio > 0.30);
