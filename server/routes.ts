@@ -940,81 +940,274 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
 
-  // ─── S4 Seasonal Sports Arb Analysis ─────────────────────────────────────────
+  // ─── S4 Seasonal Sports Arb — Series Hedge Detector ────────────────────────────
   app.get("/api/s4-analysis", async (_req, res) => {
     try {
       const allWallets = storage.getAllWallets();
 
-      // S4 filter: Sports markets, mid-price entry ($0.35–$0.65), large trade size, high WR
+      // Pre-filter: Sports markets, mid-price, decent WR
       const s4Candidates = allWallets.filter(w => {
         const markets: string[] = (() => { try { return JSON.parse(w.markets ?? "[]"); } catch { return []; } })();
         const hasSports = markets.includes("Sports");
-        const midPrice  = (w.avgBuyPrice ?? 0) >= 0.30 && (w.avgBuyPrice ?? 0) <= 0.72;
-        const goodWR    = (w.winRate ?? 0) > 0.70;
-        return hasSports && midPrice && goodWR && (w.totalTrades ?? 0) > 0;
+        const midPrice  = (w.avgBuyPrice ?? 0) >= 0.25 && (w.avgBuyPrice ?? 0) <= 0.78;
+        return hasSports && midPrice && (w.winRate ?? 0) > 0.60 && (w.totalTrades ?? 0) > 0;
       });
 
+      // ── Series key normalizer ────────────────────────────────────────────────────
+      function normalizeSeriesKey(title: string): string {
+        const t = title.toLowerCase();
+
+        // EPL / Premier League
+        if (t.includes("premier league") || t.includes("epl")) {
+          const m = t.match(/20(\d{2})[–\-\/](\d{2,4})/);
+          const yr = m ? `${m[1]}_${m[2].slice(-2)}` : "cur";
+          return `epl_${yr}_winner`;
+        }
+        // Champions League
+        if (t.includes("champions league") || t.includes("ucl")) {
+          const m = t.match(/20(\d{2})[–\-\/](\d{2,4})/);
+          const yr = m ? `${m[1]}_${m[2].slice(-2)}` : "cur";
+          return `ucl_${yr}_winner`;
+        }
+        // La Liga
+        if (t.includes("la liga") || t.includes("laliga")) {
+          const m = t.match(/20(\d{2})[–\-\/](\d{2,4})/);
+          const yr = m ? `${m[1]}_${m[2].slice(-2)}` : "cur";
+          return `laliga_${yr}_winner`;
+        }
+        // Bundesliga
+        if (t.includes("bundesliga")) {
+          const m = t.match(/20(\d{2})[–\-\/](\d{2,4})/);
+          const yr = m ? `${m[1]}_${m[2].slice(-2)}` : "cur";
+          return `bundesliga_${yr}_winner`;
+        }
+        // Serie A
+        if (t.includes("serie a")) {
+          const m = t.match(/20(\d{2})[–\-\/](\d{2,4})/);
+          const yr = m ? `${m[1]}_${m[2].slice(-2)}` : "cur";
+          return `serie_a_${yr}_winner`;
+        }
+        // NBA
+        if (t.includes("nba") && (t.includes("champion") || t.includes("finals") || t.includes("win the"))) {
+          const m = t.match(/20(\d{2})[–\-\/](\d{2,4})/);
+          const yr = m ? `${m[1]}_${m[2].slice(-2)}` : "cur";
+          return `nba_${yr}_champion`;
+        }
+        // NFL / Super Bowl
+        if (t.includes("super bowl") || (t.includes("nfl") && t.includes("champion"))) {
+          const m = t.match(/super bowl (\w+)/);
+          const sb = m ? m[1] : "cur";
+          return `nfl_sb_${sb}_winner`;
+        }
+        // World Cup
+        if (t.includes("world cup") && (t.includes("win") || t.includes("champion"))) {
+          const m = t.match(/20(\d{2})/);
+          const yr = m ? m[1] : "cur";
+          return `wc_${yr}_winner`;
+        }
+        // Generic: extract year + "winner/champion" pattern → slug from first 6 words
+        const words = t.replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(Boolean).slice(0, 6);
+        return words.join("_").slice(0, 48);
+      }
+
+      function seriesLabel(key: string): string {
+        return key
+          .replace(/_/g, " ")
+          .replace(/(\w)/g, c => c.toUpperCase())
+          .replace(/Epl/, "EPL").replace(/Ucl/, "UCL").replace(/Nba/, "NBA")
+          .replace(/Nfl/, "NFL").replace(/Wc /, "World Cup ");
+      }
+
+      // ── Main per-wallet analysis ─────────────────────────────────────────────────
       const results = await Promise.all(
-        s4Candidates.slice(0, 20).map(async (wallet) => {
+        s4Candidates.slice(0, 25).map(async (wallet) => {
           try {
             const trades = await fetchWalletTrades(wallet.address, 500);
+
             const sportsTrades = trades.filter(t => {
               const tl = (t.title ?? "").toLowerCase();
               return tl.includes("win") || tl.includes("champion") || tl.includes("premier") ||
-                     tl.includes("nba") || tl.includes("nfl") || tl.includes("superbowl") ||
-                     tl.includes("super bowl") || tl.includes("serie a") || tl.includes("laliga") ||
-                     tl.includes("bundesliga") || tl.includes("ucl") || tl.includes("world cup");
+                     tl.includes("nba") || tl.includes("nfl") || tl.includes("super bowl") ||
+                     tl.includes("serie a") || tl.includes("laliga") || tl.includes("la liga") ||
+                     tl.includes("bundesliga") || tl.includes("ucl") || tl.includes("world cup") ||
+                     tl.includes("champions league");
             });
+
+            if (sportsTrades.length < 3) return null;
+
             const sportsBuys  = sportsTrades.filter(t => t.side === "BUY");
             const sportsSells = sportsTrades.filter(t => t.side === "SELL");
 
-            // Avg buy + sell prices on sports markets
+            // Avg prices
             const avgSportsBuyPrice  = sportsBuys.length
-              ? sportsBuys.reduce((s, t) => s + (t.price ?? 0), 0) / sportsBuys.length : 0;
+              ? sportsBuys.reduce((s, t) => s + (t.price ?? 0), 0) / sportsBuys.length : null;
             const avgSportsSellPrice = sportsSells.length
-              ? sportsSells.reduce((s, t) => s + (t.price ?? 0), 0) / sportsSells.length : 0;
-
-            // Avg trade size in USDC
+              ? sportsSells.reduce((s, t) => s + (t.price ?? 0), 0) / sportsSells.length : null;
             const avgSportsTradeSize = sportsTrades.length
-              ? sportsTrades.reduce((s, t) => s + (t.size ?? 0), 0) / sportsTrades.length : 0;
+              ? sportsTrades.reduce((s, t) => s + (t.size ?? 0), 0) / sportsTrades.length : null;
 
-            // Hedge detection: same market bought + sold (typical S4 pattern)
-            const conditionSides = new Map<string, Set<string>>();
-            sportsTrades.forEach(t => {
-              if (!conditionSides.has(t.conditionId)) conditionSides.set(t.conditionId, new Set());
-              conditionSides.get(t.conditionId)!.add(t.side);
-            });
-            const hedgedMarkets  = [...conditionSides.values()].filter(s => s.has("BUY") && s.has("SELL")).length;
-            const totalMarkets   = conditionSides.size;
-            const hedgeRatio     = totalMarkets > 0 ? hedgedMarkets / totalMarkets : 0;
-
-            // Buy price distribution buckets
-            const priceBuckets: Record<string, number> = {
-              "under0.35": 0, "0.35-0.50": 0, "0.50-0.65": 0,
-              "0.65-0.80": 0, "0.80-0.95": 0, "0.95+": 0,
+            // Price buckets
+            const priceBuckets = {
+              under0_35: 0, p0_35_to_0_50: 0, p0_50_to_0_65: 0,
+              p0_65_to_0_80: 0, p0_80_to_0_95: 0, p0_95_plus: 0,
             };
             sportsBuys.forEach(t => {
               const p = t.price ?? 0;
-              if      (p < 0.35) priceBuckets["under0.35"]++;
-              else if (p < 0.50) priceBuckets["0.35-0.50"]++;
-              else if (p < 0.65) priceBuckets["0.50-0.65"]++;
-              else if (p < 0.80) priceBuckets["0.65-0.80"]++;
-              else if (p < 0.95) priceBuckets["0.80-0.95"]++;
-              else               priceBuckets["0.95+"]++;
+              if      (p < 0.35) priceBuckets.under0_35++;
+              else if (p < 0.50) priceBuckets.p0_35_to_0_50++;
+              else if (p < 0.65) priceBuckets.p0_50_to_0_65++;
+              else if (p < 0.80) priceBuckets.p0_65_to_0_80++;
+              else if (p < 0.95) priceBuckets.p0_80_to_0_95++;
+              else               priceBuckets.p0_95_plus++;
             });
 
             // Top markets by volume
             const marketVol = new Map<string, { title: string; vol: number; count: number }>();
             sportsTrades.forEach(t => {
               const prev = marketVol.get(t.conditionId) ?? { title: t.title ?? "", vol: 0, count: 0 };
-              marketVol.set(t.conditionId, { title: t.title ?? prev.title, vol: prev.vol + (t.size ?? 0), count: prev.count + 1 });
+              marketVol.set(t.conditionId, {
+                title: t.title ?? prev.title,
+                vol: prev.vol + (t.size ?? 0),
+                count: prev.count + 1,
+              });
             });
-            const topMarkets = [...marketVol.values()]
-              .sort((a, b) => b.vol - a.vol)
-              .slice(0, 3);
+            const topMarkets = [...marketVol.values()].sort((a, b) => b.vol - a.vol).slice(0, 5);
 
-            // Post-filter: must have meaningful sports activity
-            if (sportsTrades.length < 3) return null;
+            // ── Series grouping ──────────────────────────────────────────────────────
+            type SeriesEntry = {
+              seriesKey: string;
+              seriesLabel: string;
+              outcomes: Set<string>;       // normalized outcome strings
+              conditionIds: Set<string>;
+              buyTrades: number; sellTrades: number;
+              buyNotional: number; sellNotional: number;
+              buyPriceSum: number; sellPriceSum: number;
+              timestamps: number[];
+              endDates: number[];          // unix seconds
+              sampleSlugs: Set<string>;
+              sampleTitle: string;
+            };
+
+            const seriesMap = new Map<string, SeriesEntry>();
+
+            sportsTrades.forEach(t => {
+              const key = normalizeSeriesKey(t.title ?? "");
+              if (!seriesMap.has(key)) {
+                seriesMap.set(key, {
+                  seriesKey: key,
+                  seriesLabel: seriesLabel(key),
+                  outcomes: new Set(),
+                  conditionIds: new Set(),
+                  buyTrades: 0, sellTrades: 0,
+                  buyNotional: 0, sellNotional: 0,
+                  buyPriceSum: 0, sellPriceSum: 0,
+                  timestamps: [],
+                  endDates: [],
+                  sampleSlugs: new Set(),
+                  sampleTitle: t.title ?? "",
+                });
+              }
+              const s = seriesMap.get(key)!;
+              // Outcome = the specific team/option in the title
+              // Extract by removing the series-level tokens
+              const outcomeToken = (t.title ?? "")
+                .replace(/will /i, "")
+                .replace(/win the .*/i, "")
+                .replace(/champion.*/i, "")
+                .trim()
+                .toLowerCase()
+                .slice(0, 40);
+              s.outcomes.add(outcomeToken);
+              s.conditionIds.add(t.conditionId);
+              if (t.side === "BUY") {
+                s.buyTrades++;
+                s.buyNotional  += (t.size ?? 0);
+                s.buyPriceSum  += (t.price ?? 0);
+              } else {
+                s.sellTrades++;
+                s.sellNotional  += (t.size ?? 0);
+                s.sellPriceSum  += (t.price ?? 0);
+              }
+              s.timestamps.push(t.timestamp ?? 0);
+              if (t.endDate) s.endDates.push(Math.floor(new Date(t.endDate).getTime() / 1000));
+              if (t.slug)    s.sampleSlugs.add(t.slug);
+            });
+
+            // Build S4SeriesRow[]
+            const seriesRows = [...seriesMap.values()].map(s => {
+              const grossNotional = s.buyNotional + s.sellNotional;
+              const netDir        = Math.abs(s.buyNotional - s.sellNotional);
+              const hedgeRatio    = grossNotional > 0 ? 1 - netDir / grossNotional : 0;
+              const avgBuyPrice   = s.buyTrades  > 0 ? s.buyPriceSum  / s.buyTrades  : null;
+              const avgSellPrice  = s.sellTrades > 0 ? s.sellPriceSum / s.sellTrades : null;
+              const avgTradeSize  = (s.buyTrades + s.sellTrades) > 0
+                ? grossNotional / (s.buyTrades + s.sellTrades) : null;
+              const firstTradeTs  = s.timestamps.length ? Math.min(...s.timestamps) : null;
+              const lastTradeTs   = s.timestamps.length ? Math.max(...s.timestamps) : null;
+
+              // Median days to resolution: endDate - tradeTimestamp
+              let medianDaysToResolution: number | null = null;
+              if (s.endDates.length && s.timestamps.length) {
+                const maxEnd = Math.max(...s.endDates);
+                const daysArr = s.timestamps.map(ts => (maxEnd - ts) / 86400).filter(d => d > 0);
+                if (daysArr.length) {
+                  daysArr.sort((a, b) => a - b);
+                  medianDaysToResolution = daysArr[Math.floor(daysArr.length / 2)];
+                }
+              }
+
+              return {
+                seriesKey: s.seriesKey,
+                seriesLabel: s.seriesLabel,
+                sampleMarketTitle: s.sampleTitle,
+                outcomesTraded: s.outcomes.size,
+                marketsTraded: s.conditionIds.size,
+                buyTrades: s.buyTrades,
+                sellTrades: s.sellTrades,
+                buyNotional: s.buyNotional,
+                sellNotional: s.sellNotional,
+                grossNotional,
+                netDirectionalExposure: netDir,
+                hedgeRatio,
+                avgBuyPrice,
+                avgSellPrice,
+                avgTradeSize,
+                firstTradeTs,
+                lastTradeTs,
+                medianDaysToResolution,
+                sampleSlugs: [...s.sampleSlugs].slice(0, 3),
+              };
+            }).sort((a, b) => b.grossNotional - a.grossNotional);
+
+            const totalGrossNotional = seriesRows.reduce((s, r) => s + r.grossNotional, 0);
+
+            // Wallet-level series metrics
+            const seriesCount = seriesRows.length;
+            const avgSeriesOutcomeCount = seriesCount > 0
+              ? seriesRows.reduce((s, r) => s + r.outcomesTraded, 0) / seriesCount : 0;
+            const maxSeriesConcentration = totalGrossNotional > 0 && seriesRows.length > 0
+              ? seriesRows[0].grossNotional / totalGrossNotional : 0;
+
+            // Weighted seriesHedgeRatio
+            const seriesHedgeRatio = totalGrossNotional > 0
+              ? seriesRows.reduce((s, r) => s + r.hedgeRatio * r.grossNotional, 0) / totalGrossNotional : 0;
+
+            const topSeries    = seriesRows[0] ?? null;
+            const top3Series   = seriesRows.slice(0, 3);
+
+            // strongS4Candidate
+            const strongS4Candidate =
+              sportsTrades.length >= 10 &&
+              (avgSportsBuyPrice ?? 0) >= 0.30 &&
+              (avgSportsBuyPrice ?? 0) <= 0.70 &&
+              (avgSportsTradeSize ?? 0) >= 10_000 &&
+              (topSeries?.outcomesTraded ?? 0) >= 2 &&
+              (topSeries?.hedgeRatio ?? 0) >= 0.75 &&
+              maxSeriesConcentration >= 0.40;
+
+            // Post-filter: must have ≥1 series with ≥2 outcomes OR seriesHedgeRatio > 0.3
+            const hasHedge = seriesRows.some(r => r.outcomesTraded >= 2 || r.hedgeRatio > 0.30);
+            if (!hasHedge && !strongS4Candidate) return null;
 
             return {
               address: wallet.address,
@@ -1023,39 +1216,54 @@ export function registerRoutes(httpServer: Server, app: Express) {
               totalPnl: wallet.totalPnl,
               totalTrades: wallet.totalTrades,
               trades30d: wallet.trades30d,
-              avgBuyPrice: wallet.avgBuyPrice,
-              avgTradeSize: wallet.avgTradeSize,
               sportsTradeCount: sportsTrades.length,
               sportsBuyCount: sportsBuys.length,
               sportsSellCount: sportsSells.length,
               avgSportsBuyPrice,
               avgSportsSellPrice,
               avgSportsTradeSize,
-              hedgeRatio,
-              hedgedMarkets,
-              totalMarkets,
+              seriesCount,
+              avgSeriesOutcomeCount,
+              maxSeriesConcentration,
+              topSeriesKey:                   topSeries?.seriesKey ?? null,
+              topSeriesLabel:                 topSeries?.seriesLabel ?? null,
+              topSeriesOutcomeCount:          topSeries?.outcomesTraded ?? 0,
+              topSeriesGrossNotional:         topSeries?.grossNotional ?? 0,
+              topSeriesHedgeRatio:            topSeries?.hedgeRatio ?? 0,
+              topSeriesMedianDaysToResolution: topSeries?.medianDaysToResolution ?? null,
+              seriesHedgeRatio,
+              strongS4Candidate,
               priceBuckets,
               topMarkets,
+              topSeries: top3Series,
             };
           } catch { return null; }
         })
       );
 
-      const filtered = results.filter(Boolean)
-        .sort((a: any, b: any) => b.avgSportsTradeSize - a.avgSportsTradeSize);
+      const filtered = results.filter(Boolean) as any[];
+      const sorted   = filtered.sort((a, b) => b.topSeriesGrossNotional - a.topSeriesGrossNotional);
+      const s4Count  = sorted.filter(w => w.strongS4Candidate || w.seriesHedgeRatio >= 0.50).length;
+      const strongCount = sorted.filter(w => w.strongS4Candidate).length;
 
       res.json({
-        s4Wallets: filtered,
+        s4Wallets: sorted,
         summary: {
-          totalScanned: s4Candidates.length,
-          withSportsTrades: filtered.length,
-          avgHedgeRatio: filtered.length
-            ? filtered.reduce((s: number, r: any) => s + r.hedgeRatio, 0) / filtered.length : 0,
-          avgSportsBuyPrice: filtered.length
-            ? filtered.reduce((s: number, r: any) => s + r.avgSportsBuyPrice, 0) / filtered.length : 0,
-        }
+          totalScanned:       s4Candidates.length,
+          withSportsTrades:   filtered.length,
+          s4Candidates:       s4Count,
+          strongS4Candidates: strongCount,
+          avgHedgeRatio:      filtered.length
+            ? filtered.reduce((s, r) => s + r.seriesHedgeRatio, 0) / filtered.length : 0,
+          avgSportsBuyPrice:  filtered.length
+            ? filtered.reduce((s, r) => s + (r.avgSportsBuyPrice ?? 0), 0) / filtered.length : null,
+          avgSportsTradeSize: filtered.length
+            ? filtered.reduce((s, r) => s + (r.avgSportsTradeSize ?? 0), 0) / filtered.length : null,
+        },
       });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+
 }
+
