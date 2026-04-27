@@ -11,6 +11,7 @@ import Signals from "@/pages/Signals";
 import NotFound from "@/pages/not-found";
 import SportsArb from "@/pages/SportsArb";
 import S2Analysis from "@/pages/S2Analysis";
+import S4Analysis from "@/pages/S4Analysis";
 
 function Logo() {
   return (
@@ -79,6 +80,7 @@ function Nav() {
           <NavLink href="/">Dashboard</NavLink>
           <NavLink href="/sports-arb">🎯 Sports Arb</NavLink>
           <NavLink href="/s2">⚡ S2 Analysis</NavLink>
+          <NavLink href="/s4">🏆 S4 Analysis</NavLink>
           <NavLink href="/signals">
             <SignalsNavItem />
           </NavLink>
@@ -108,6 +110,7 @@ function AppInner() {
           <Route path="/live" component={LiveFeed} />
           <Route path="/sports-arb" component={SportsArb} />
           <Route path="/s2" component={S2Analysis} />
+          <Route path="/s4" component={S4Analysis} />
           <Route component={NotFound} />
         </Switch>
       </div>
