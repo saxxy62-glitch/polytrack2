@@ -1289,15 +1289,20 @@ export function registerRoutes(httpServer: Server, app: Express) {
             const s4Subtype = s4LongScore >= s4ShortScore ? "long" : "short";
 
             // Soft detector gate
+            // Fix 1: concentration lowered 0.40 → 0.30 (catches geniusMC @ 0.359)
+            // Fix 2: longHorizonTradeShare removed as standalone pass — it's a score
+            //        booster only; must always pair with structural hedge signal
+            const _hasHedgeSignal =
+              _hedgeRatio      >= 0.15 ||   // top series has some cross-outcome hedge
+              seriesHedgeRatio >= 0.10 ||   // overall wallet cross-series hedge
+              (_outcomeCount   >= 3 && (avgSportsBuyPrice ?? 0) >= 0.20 && (avgSportsBuyPrice ?? 0) <= 0.75);
+              // 3+ outcomes + mid-price = structural multi-outcome positioning
+
             const strongS4Candidate =
               sportsTrades.length >= 5 &&
               _outcomeCount >= 2 &&
-              maxSeriesConcentration >= 0.40 &&
-              (
-                _hedgeRatio          >= 0.25 ||
-                seriesHedgeRatio     >= 0.15 ||
-                walletLongH          >= 0.70
-              );
+              maxSeriesConcentration >= 0.30 &&
+              _hasHedgeSignal;
 
             // Subtypes
             const strongS4Long  = strongS4Candidate && s4Subtype === "long"  && s4LongScore  >= 55;
