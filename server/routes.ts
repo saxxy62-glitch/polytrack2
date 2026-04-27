@@ -741,7 +741,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const allWallets = storage.getAllWallets();
       const sportsArbers = allWallets.filter(w => {
         const markets: string[] = (() => { try { return JSON.parse(w.markets ?? "[]"); } catch { return []; } })();
-        return markets.includes("Sports") && (w.avgBuyPrice ?? 0) >= 0.90 && (w.winRate ?? 0) > 0.75 && (w.trades30d ?? 0) > 0;
+        return markets.includes("Sports") && (w.avgBuyPrice ?? 0) > 0.70 && (w.winRate ?? 0) > 0.75 && (w.trades30d ?? 0) > 0;
       });
       const sportKeywords = ["vs.", " vs ", "game", "match", "series", "playoffs",
         "nba", "nfl", "mlb", "nhl", "soccer", "tennis", "ufc", "mma",
