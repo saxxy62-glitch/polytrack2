@@ -426,36 +426,113 @@ export async function aggregateWalletOnDemand(address: string): Promise<WalletAg
 // ─── Market endDate cache + enrichment ──────────────────────────────────────
 const endDateCache = new Map<string, string | null>(); // conditionId -> ISO date or null
 
-async function fetchMarketEndDate(conditionId: string): Promise<string | null> {
-  if (endDateCache.has(conditionId)) return endDateCache.get(conditionId)!;
+// endDate cache by conditionId AND by tokenId (asset)
+const endDateCache    = new Map<string, string | null>(); // conditionId → ISO or null
+const assetEndDateMap = new Map<string, string | null>(); // tokenId/asset → ISO or null
+
+async function fetchMarketEndDate(conditionId: string, asset?: string): Promise<string | null> {
+  // 1. Already cached by conditionId
+  if (endDateCache.has(conditionId)) {
+    const cached = endDateCache.get(conditionId)!;
+    if (cached) return cached;
+    // Even if conditionId returned null, try asset below
+  }
+
+  // Helper: extract endDate from gamma market array
+  const extractEnd = (data: any): string | null => {
+    const arr = Array.isArray(data) ? data : (data?.markets ?? []);
+    return arr[0]?.endDate ?? arr[0]?.end_date ?? null;
+  };
+
+  // 2. Try gamma API by conditionId
   try {
     const data = await fetchJson(
       `https://gamma-api.polymarket.com/markets?conditionId=${conditionId}`
     );
-    const markets = Array.isArray(data) ? data : (data?.markets ?? []);
-    const endDate = markets[0]?.endDate ?? markets[0]?.end_date ?? null;
-    endDateCache.set(conditionId, endDate);
-    return endDate;
-  } catch {
-    endDateCache.set(conditionId, null);
-    return null;
+    const endDate = extractEnd(data);
+    if (endDate) {
+      endDateCache.set(conditionId, endDate);
+      return endDate;
+    }
+  } catch { /* continue */ }
+
+  // 3. Try gamma API by clob_token_id (asset field = token id for Up/Down markets)
+  if (asset && asset.length > 10) {
+    if (assetEndDateMap.has(asset)) {
+      const cached = assetEndDateMap.get(asset)!;
+      if (cached) { endDateCache.set(conditionId, cached); return cached; }
+    }
+    try {
+      const data = await fetchJson(
+        `https://gamma-api.polymarket.com/markets?clob_token_ids=${asset}`
+      );
+      const endDate = extractEnd(data);
+      assetEndDateMap.set(asset, endDate);
+      if (endDate) {
+        endDateCache.set(conditionId, endDate);
+        return endDate;
+      }
+    } catch { /* continue */ }
   }
+
+  // 4. Try Polymarket CLOB REST API
+  try {
+    const data = await fetchJson(
+      `https://clob.polymarket.com/markets/${conditionId}`
+    );
+    const endDate = data?.end_date_iso ?? data?.endDateIso ?? null;
+    if (endDate) {
+      endDateCache.set(conditionId, endDate);
+      return endDate;
+    }
+  } catch { /* continue */ }
+
+  // 5. Heuristic for Up/Down markets: title contains duration hint
+  // e.g. "BTC Up or Down 2% in 1 hour?" → expiry ≈ trade timestamp + 1h
+  // We store null but let proximity code use title-based heuristic
+  endDateCache.set(conditionId, null);
+  return null;
 }
 
 export async function enrichTradesWithEndDate(trades: RawTrade[]): Promise<RawTrade[]> {
-  // Collect unique conditionIds that don't have endDate yet
-  const missing = [...new Set(
-    trades.filter(t => !t.endDate && t.conditionId).map(t => t.conditionId)
-  )];
-  // Fetch in parallel with concurrency limit of 5
+  // Unique (conditionId, asset) pairs that still need endDate
+  const seen = new Map<string, string | undefined>(); // conditionId → asset
+  trades.forEach(t => {
+    if (!t.endDate && t.conditionId && !endDateCache.get(t.conditionId)) {
+      seen.set(t.conditionId, t.asset ?? undefined);
+    }
+  });
+
   const CHUNK = 5;
-  for (let i = 0; i < missing.length; i += CHUNK) {
-    await Promise.all(missing.slice(i, i + CHUNK).map(fetchMarketEndDate));
+  const pairs = [...seen.entries()];
+  for (let i = 0; i < pairs.length; i += CHUNK) {
+    await Promise.all(
+      pairs.slice(i, i + CHUNK).map(([cid, asset]) => fetchMarketEndDate(cid, asset))
+    );
   }
-  // Annotate trades
+
   return trades.map(t => ({
     ...t,
     endDate: t.endDate ?? endDateCache.get(t.conditionId) ?? undefined,
   }));
+}
+
+// Title-based expiry heuristic for Up/Down markets where API returns no endDate
+// Returns estimated ISO string from trade timestamp + duration parsed from title
+export function estimateEndDateFromTitle(title: string, tradeTimestamp: number): string | null {
+  const t = title.toLowerCase();
+  const msMap: Record<string, number> = {
+    "1 minute": 60_000, "5 minutes": 300_000, "10 minutes": 600_000,
+    "15 minutes": 900_000, "30 minutes": 1_800_000,
+    "1 hour": 3_600_000, "2 hours": 7_200_000, "4 hours": 14_400_000,
+    "6 hours": 21_600_000, "12 hours": 43_200_000, "24 hours": 86_400_000,
+    "1 day": 86_400_000, "2 days": 172_800_000, "1 week": 604_800_000,
+  };
+  for (const [label, ms] of Object.entries(msMap)) {
+    if (t.includes(label)) {
+      return new Date(tradeTimestamp * 1000 + ms).toISOString();
+    }
+  }
+  return null;
 }
 
