@@ -40,7 +40,7 @@ function median(arr: number[]): number | null {
 
 export default function SportsArb() {
   const { data, isLoading } = useQuery<any>({
-    queryKey: ["/api/sports-nearexpiry"],
+    queryKey: ["/api/sports-nearexpiry"], // alias: /api/s3-analysis
     refetchInterval: 120_000,
   });
   // Force tab title
@@ -143,22 +143,30 @@ export default function SportsArb() {
         </div>
 
         <div className="bg-surface-1 border border-border rounded-lg p-4">
-          <h2 className="text-sm font-medium text-foreground mb-1">Time-to-Expiry distribution</h2>
+          <h2 className="text-sm font-medium text-foreground mb-1 flex items-center gap-2">
+            Time-to-Expiry distribution
+            <span className="text-[10px] font-normal text-muted-foreground">requires endDate enrichment</span>
+          </h2>
           <p className="text-xs text-muted-foreground mb-3">
             <span className="text-red-400 font-medium">&lt;30s</span> = нужна коллокация · <span className="text-orange font-medium">30s–2m</span> = VPS достаточно
           </p>
-          <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={tteData}>
-              <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} />
-              <Tooltip formatter={(v: number) => [`${v} трейдов`]} />
-              <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                {tteData.map((e) => (
-                  <Cell key={e.tte} fill={TTE_COLORS[e.tte] ?? "#6b7280"} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          {tteData.every(e => e.count === 0)
+            ? <div className="h-[160px] flex items-center justify-center text-[11px] text-muted-foreground italic">
+                Нет endDate данных для near-expiry трейдов — TTE неизвестен
+              </div>
+            : <ResponsiveContainer width="100%" height={160}>
+                <BarChart data={tteData}>
+                  <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                  <YAxis tick={{ fontSize: 10 }} />
+                  <Tooltip formatter={(v: number) => [`${v} трейдов`]} />
+                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                    {tteData.map((e) => (
+                      <Cell key={e.tte} fill={TTE_COLORS[e.tte] ?? "#6b7280"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+          }
         </div>
       </div>
 
@@ -212,7 +220,15 @@ export default function SportsArb() {
                       {w.name || w.address.slice(0, 10)}
                     </Link>
                   </td>
-                  <td className="px-3 py-2 font-mono text-green">{((w.winRate ?? 0) * 100).toFixed(0)}%</td>
+                  <td className="px-3 py-2 font-mono">
+                    <span
+                      className={`cursor-help ${(w.winRate??0)>=1?"text-green":(w.winRate??0)>=0.8?"text-yellow":"text-orange"}`}
+                      title={w.trades30d!=null
+                        ? `${Math.round((w.winRate??0)*100)}% WR · est. ${Math.round((w.winRate??0)*(w.trades30d??0))} wins / ${Math.round((1-(w.winRate??0))*(w.trades30d??0))} losses (30d trades)`
+                        : `${Math.round((w.winRate??0)*100)}% WR`}>
+                      {((w.winRate ?? 0) * 100).toFixed(0)}%
+                    </span>
+                  </td>
                   <td className="px-3 py-2 font-mono">¢{((w.avgBuyPrice ?? 0) * 100).toFixed(0)}</td>
                   <td className="px-3 py-2 font-mono text-orange font-semibold">{w.nearExpiryCount}</td>
                   <td className="px-3 py-2 font-mono">{w.priceBuckets?.["0.97-0.99"] ?? 0}</td>
