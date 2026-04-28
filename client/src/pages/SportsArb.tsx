@@ -43,6 +43,8 @@ export default function SportsArb() {
     queryKey: ["/api/sports-nearexpiry"],
     refetchInterval: 120_000,
   });
+  // Force tab title
+  if (typeof document !== "undefined") document.title = "S3 Analysis · Polytrack";
   const [sortBy, setSortBy] = useState<"price99"|"nearExp"|"score">("price99");
 
   const rawArbers: any[] = data?.sportsArbers ?? [];
@@ -107,7 +109,7 @@ export default function SportsArb() {
           { label: "Near-expiry трейдов", value: totalNearExpiry.toLocaleString(),               icon: <TrendingUp className="w-4 h-4 text-green" /> },
           { label: "Объём near-expiry",   value: fmtK(totalVolume),                              icon: <Target className="w-4 h-4 text-cyan" /> },
           { label: "Median Avg Buy¢",     value: medAvgBuy != null ? `¢${medAvgBuy.toFixed(0)}` : "—", icon: <span className="text-[16px]">📊</span> },
-          { label: "Median Near-exp",     value: medNearExp != null ? String(Math.round(medNearExp)) : "—", icon: <span className="text-[16px]">🎯</span> },
+          { label: "Median Near-exp",     value: medNearExp != null ? String(Math.round(medNearExp)) : "—", icon: <Target className="w-4 h-4 text-orange" /> },
         ].map(({ label, value, icon }) => (
           <div key={label} className="bg-surface-1 border border-border rounded-lg p-3 flex items-center gap-2">
             {icon}
