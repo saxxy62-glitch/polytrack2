@@ -542,59 +542,32 @@ export function estimateEndDateForSports(title: string, tradeTimestamp: number):
   const now = new Date(tradeTimestamp * 1000);
   const yr  = now.getFullYear();
 
-  // ── Priority 1: Extract specific match date from title ────────────────
-  // Patterns: "vs Arsenal - May 3", "| Apr 30", "(April 29)", "on May 5", "Mar 15"
-  const MONTHS = "jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec";
-  const MONTHS_FULL = "january|february|march|april|may|june|july|august|september|october|november|december";
-  const monthRe = new RegExp(
-    `\\b(${MONTHS_FULL}|${MONTHS})\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`, "i"
-  );
-  const matchDate = t.match(monthRe);
-  if (matchDate) {
-    const monthNames: Record<string, number> = {
-      jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, oct:10, nov:11, dec:12,
-      january:1, february:2, march:3, april:4, june:6, july:7, august:8,
-      september:9, october:10, november:11, december:12
-    };
-    const mon = matchDate[1] ? monthNames[matchDate[1].slice(0, 3).toLowerCase()] : undefined;
-    const day = matchDate[2] ? parseInt(matchDate[2], 10) : 0;
+  // Priority 1: specific match date in title ("May 3", "Apr 30", "april 29")
+  const monthMap: Record<string, number> = {
+    jan:1, feb:2, mar:3, apr:4, may:5, jun:6,
+    jul:7, aug:8, sep:9, oct:10, nov:11, dec:12
+  };
+  const md = t.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\b/i);
+  if (md) {
+    const mon = monthMap[md[1].slice(0, 3).toLowerCase()];
+    const day = parseInt(md[2], 10);
     if (mon && day >= 1 && day <= 31) {
-      // Use current year; if date already passed by >30 days, try next year
-      const candidate = new Date(Date.UTC(yr, mon - 1, day, 23, 59, 0));
-      const tradeTs   = tradeTimestamp * 1000;
-      const finalYr   = candidate.getTime() < tradeTs - 30 * 86400000 ? yr + 1 : yr;
-      return new Date(Date.UTC(finalYr, mon - 1, day, 23, 59, 0)).toISOString();
-    }
-  }
-  // Numeric date: "4/30", "04-30", "30/4" (day/month EU style)
-  const numDate = t.match(/\b(\d{1,2})[\-\/](\d{1,2})\b/);
-  if (numDate) {
-    const a = numDate[1] ? parseInt(numDate[1], 10) : 0, b2 = numDate[2] ? parseInt(numDate[2], 10) : 0;
-    const [mon2, day2] = a > 12 ? [b2, a] : [a, b2];
-    if (mon2 >= 1 && mon2 <= 12 && day2 >= 1 && day2 <= 31) {
-      const candidate2 = new Date(Date.UTC(yr, mon2 - 1, day2, 23, 59, 0));
-      const tradeTs2   = tradeTimestamp * 1000;
-      if (Math.abs(candidate2.getTime() - tradeTs2) < 30 * 86400000) {
-        return candidate2.toISOString();
-      }
+      const tsMs  = tradeTimestamp * 1000;
+      const useYr = new Date(Date.UTC(yr, mon - 1, day)).getTime() < tsMs - 2592000000 ? yr + 1 : yr;
+      return new Date(Date.UTC(useYr, mon - 1, day, 23, 59, 0)).toISOString();
     }
   }
 
   const seasonM = title.match(/20(\d{2})[\u2013\-\/](?:20)?(\d{2})\b/);
   const endYr = seasonM ? parseInt(`20${seasonM[2]}`, 10) : null;
 
-  // ── Sports (season-level fallback) ────────────────────────────────────
   if (/premier league|\bepl\b|la liga|laliga|bundesliga|serie a|champions league|\bucl\b|europa league|\buel\b|ligue 1|eredivisie/i.test(t))
     return new Date(`${endYr ?? yr + 1}-05-25T23:59:00Z`).toISOString();
   if (/stanley cup|nhl playoffs|\bnhl\b/i.test(t))
     return new Date(`${endYr ?? yr}-06-20T23:59:00Z`).toISOString();
-  if (/nba finals|nba championship|eastern conference|western conference/i.test(t))
+  if (/nba finals|nba championship|eastern conference|western conference|\bnba\b/i.test(t))
     return new Date(`${endYr ?? yr}-06-20T23:59:00Z`).toISOString();
-  if (/\bnba\b/i.test(t))
-    return new Date(`${endYr ?? yr}-06-20T23:59:00Z`).toISOString();
-  if (/super bowl|nfl championship/i.test(t))
-    return new Date(`${endYr ?? yr}-02-15T23:59:00Z`).toISOString();
-  if (/\bnfl\b|ncaa football/i.test(t))
+  if (/super bowl|nfl championship|\bnfl\b|ncaa football/i.test(t))
     return new Date(`${endYr ?? yr}-02-15T23:59:00Z`).toISOString();
   if (/world cup|euro 20\d{2}/i.test(t))
     return new Date(`${endYr ?? yr}-07-15T23:59:00Z`).toISOString();
@@ -612,52 +585,10 @@ export function estimateEndDateForSports(title: string, tradeTimestamp: number):
     return new Date(`${endYr ?? yr}-12-31T23:59:00Z`).toISOString();
   if (/\bformula.?1\b|\bf1\b|grand prix/i.test(t))
     return new Date(`${endYr ?? yr}-12-01T23:59:00Z`).toISOString();
-
-  // ── Awards / Entertainment ────────────────────────────────────────────
-  // Academy Awards / Oscars — ceremony typically late Feb / early Mar
   if (/academy award|\boscars?\b|best picture|best director|best actor|best actress/i.test(t))
     return new Date(`${yr}-03-10T23:59:00Z`).toISOString();
-  // Grammy Awards — February
   if (/grammy/i.test(t))
-    return new Date(`${yr}-02-15T23:59:00Z`).toISOString();
-  // Emmy Awards — September
-  if (/emmy/i.test(t))
-    return new Date(`${yr}-09-25T23:59:00Z`).toISOString();
-  // Golden Globes — January
-  if (/golden globe/i.test(t))
-    return new Date(`${yr}-01-20T23:59:00Z`).toISOString();
-  // BAFTA — March
-  if (/\bbafta\b/i.test(t))
-    return new Date(`${yr}-03-20T23:59:00Z`).toISOString();
-  // Tony Awards — June
-  if (/\btony award/i.test(t))
-    return new Date(`${yr}-06-15T23:59:00Z`).toISOString();
-  // Billboard / Music awards — variable, estimate Nov
-  if (/billboard|\bamas\b|american music award|vma|\bmtv award/i.test(t))
-    return new Date(`${yr}-11-15T23:59:00Z`).toISOString();
-  // SAG Awards — February
-  if (/sag award|screen actors guild/i.test(t))
-    return new Date(`${yr}-02-25T23:59:00Z`).toISOString();
-  // Critics Choice — January
-  if (/critics.?choice/i.test(t))
-    return new Date(`${yr}-01-25T23:59:00Z`).toISOString();
-  // Cannes / Venice / Berlin film festivals
-  if (/cannes|palme d.?or/i.test(t))
-    return new Date(`${yr}-05-30T23:59:00Z`).toISOString();
-  if (/venice film|golden lion/i.test(t))
-    return new Date(`${yr}-09-10T23:59:00Z`).toISOString();
-  if (/berlin film|golden bear/i.test(t))
-    return new Date(`${yr}-02-25T23:59:00Z`).toISOString();
-  // Nobel Prize — October
-  if (/nobel/i.test(t))
-    return new Date(`${yr}-10-15T23:59:00Z`).toISOString();
-  // Political / Elections — November of election year
-  if (/presidential election|us election|midterm election/i.test(t))
-    return new Date(`${yr}-11-10T23:59:00Z`).toISOString();
-  // General "who will win" type awards markets — estimate Q1 of current year
-  if (/who will win|will win the award|award season/i.test(t))
-    return new Date(`${yr}-03-31T23:59:00Z`).toISOString();
+    return new Date(`${yr}-02-10T23:59:00Z`).toISOString();
 
   return null;
 }
-
