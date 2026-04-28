@@ -28,7 +28,12 @@ export default function S2Analysis() {
     refetchInterval: 120_000,
   });
 
-  const wallets = data?.s2Wallets ?? [];
+  const [s2Sort, setS2Sort] = useState<"price99"|"score">("price99");
+  const wallets = [...(data?.s2Wallets ?? [])].sort((a: any, b: any) =>
+    s2Sort === "price99"
+      ? (b.priceBuckets?.["0.99+"] ?? 0) - (a.priceBuckets?.["0.99+"] ?? 0)
+      : (b.s2Score ?? 0) - (a.s2Score ?? 0)
+  );
   const summary = data?.summary ?? {};
 
   // Aggregate price buckets across all wallets
@@ -167,10 +172,22 @@ export default function S2Analysis() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-[11px] text-muted-foreground">Sort:</span>
+                {(["price99","score"] as const).map(k => (
+                  <button key={k} onClick={() => setS2Sort(k)}
+                    className={`text-[11px] px-2 py-0.5 rounded border transition-colors ${s2Sort===k?"bg-primary text-primary-foreground border-primary":"border-border text-muted-foreground hover:border-primary/50"}`}>
+                    {k === "price99" ? "$0.99+ count" : "S2 Score"}
+                  </button>
+                ))}
+              </div>
               <thead className="border-b border-border bg-surface-2">
                 <tr>
                   {["Кошелёк","WR","PnL","UpDown%","UpDown трейды","Avg Buy¢","$0.95-0.99","$0.99+","<1h%","<6h%","unknown%"].map(h => (
-                    <th key={h} className="text-left px-3 py-2 text-muted-foreground font-medium whitespace-nowrap">{h}</th>
+                    <th key={h} onClick={h==="$0.99+"?()=>setS2Sort("price99"):undefined}
+                      className={`text-left px-3 py-2 font-medium whitespace-nowrap cursor-pointer select-none ${h==="$0.99+"?"text-primary":"text-muted-foreground"}`}>
+                      {h}{h==="$0.99+"&&s2Sort==="price99"?" ▼":""}
+                    </th>
                   ))}
                 </tr>
               </thead>
