@@ -853,14 +853,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
-  // Alias: /api/s3-analysis → same data as /api/sports-nearexpiry
-  // Note: redirect doesn't work with fetch() due to CORS — use internal forward
-  app.get("/api/s3-analysis", async (req, res) => {
-    try {
-      const resp = await fetch(`http://localhost:${process.env.PORT ?? 10000}/api/sports-nearexpiry`);
-      const json = await resp.json();
-      res.json(json);
-    } catch { res.redirect("/api/sports-nearexpiry"); }
+  // Alias: /api/s3-analysis → forward to sports-nearexpiry handler
+  // Using express internal re-route (avoids fetch() TypeScript issues)
+  app.get("/api/s3-analysis", (req, res) => {
+    (req as any).url = "/api/sports-nearexpiry";
+    app._router.handle(req, res, () => res.status(404).json({ error: "not found" }));
   });
 
 
