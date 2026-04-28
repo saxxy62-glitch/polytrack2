@@ -553,7 +553,7 @@ export function estimateEndDateForSports(title: string, tradeTimestamp: number):
   if (matchDate) {
     const monthNames: Record<string, number> = {
       jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, oct:10, nov:11, dec:12,
-      january:1, february:2, march:3, april:4, june:6, july:7, august:8,
+      january:1, february:2, march:3, april:4, may:5, june:6, july:7, august:8,
       september:9, october:10, november:11, december:12
     };
     const mon = monthNames[matchDate[1].slice(0,3).toLowerCase()];
@@ -562,7 +562,7 @@ export function estimateEndDateForSports(title: string, tradeTimestamp: number):
       // Use current year; if date already passed by >30 days, try next year
       const candidate = new Date(Date.UTC(yr, mon - 1, day, 23, 59, 0));
       const tradeTs   = tradeTimestamp * 1000;
-      const finalYr   = candidate.getTime() < tradeTs - 30 * 86400_000 ? yr + 1 : yr;
+      const finalYr   = candidate.getTime() < tradeTs - 30 * 86400000 ? yr + 1 : yr;
       return new Date(Date.UTC(finalYr, mon - 1, day, 23, 59, 0)).toISOString();
     }
   }
@@ -575,7 +575,7 @@ export function estimateEndDateForSports(title: string, tradeTimestamp: number):
     if (mon2 >= 1 && mon2 <= 12 && day2 >= 1 && day2 <= 31) {
       const candidate = new Date(Date.UTC(yr, mon2 - 1, day2, 23, 59, 0));
       const tradeTs   = tradeTimestamp * 1000;
-      if (Math.abs(candidate.getTime() - tradeTs) < 30 * 86400_000) {
+      if (Math.abs(candidate.getTime() - tradeTs) < 30 * 86400000) {
         return candidate.toISOString();
       }
     }
