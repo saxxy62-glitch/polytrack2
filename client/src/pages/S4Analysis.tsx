@@ -94,11 +94,20 @@ function WalletRow({ w }: { w: any }) {
             : <span className="text-[10px] text-muted-foreground italic">—</span>}
         </td>
         <td className="px-3 py-2 font-mono text-xs">
-          {w.pnlPerCapitalDay != null
-            ? <span className={w.pnlPerCapitalDay > 0 ? "text-green" : "text-red-400"}>
-                ${w.pnlPerCapitalDay.toFixed(3)}
-              </span>
-            : <span className="text-[10px] text-muted-foreground italic">no endDate</span>}
+          {!w.strongS4Candidate
+            ? <span className="text-[10px] text-muted-foreground">—</span>
+            : w.pnlPerCapitalDay != null
+              ? <span className="flex items-center gap-1">
+                  <span className={w.pnlPerCapitalDay > 0 ? "text-green" : "text-red-400"}>
+                    ${w.pnlPerCapitalDay.toFixed(3)}
+                  </span>
+                  {w.pnlMixedWarning && (
+                    <span title={`Sports trades = ${w.sportsTradeShare!=null?Math.round(w.sportsTradeShare*100):"?"}% of total — PnL universe mismatch`}
+                      className="text-[9px] text-orange cursor-help">⚠</span>
+                  )}
+                </span>
+              : <span className="text-[10px] text-muted-foreground italic">no endDate</span>
+          }
         </td>
         <td className="px-3 py-2 font-mono text-xs">
           {w.s4Score != null ? (
@@ -218,7 +227,7 @@ export default function S4Analysis() {
           </h2>
           <div className="grid gap-4" style={{gridTemplateColumns:`repeat(${Math.min(strongLong.length,3)},1fr)`}}>
             {strongLong.map((w:any, i:number) => {
-              const annualizedRoic = w.pnlPerCapitalDay != null ? w.pnlPerCapitalDay * 365 : null;
+              const annualizedRoic = w.sportsPnlPerCapitalDay != null ? w.sportsPnlPerCapitalDay * 365 : (w.pnlPerCapitalDay != null ? w.pnlPerCapitalDay * 365 : null);
               const archetype = archetypes[i] ?? "S4Long";
               const seriesWMed = w.topSeriesWeightedMedianDays;
               return (
@@ -247,7 +256,8 @@ export default function S4Analysis() {
                       { label: "W.Med Days (series)",   val: seriesWMed              != null ? `${seriesWMed.toFixed(0)}d`                   : "—", color: "text-blue" },
                       { label: "W.Med Days (wallet)",   val: w.weightedMedianDaysToResolution != null ? `${w.weightedMedianDaysToResolution.toFixed(0)}d` : "—", color: "text-muted-foreground" },
                       { label: "Capital-Days",          val: w.capitalDays           != null ? fmtK(w.capitalDays)                           : "—", color: "" },
-                      { label: "PnL / Capital-Day",     val: w.pnlPerCapitalDay      != null ? `$${w.pnlPerCapitalDay.toFixed(3)}`           : "—", color: w.pnlPerCapitalDay>0?"text-green":"text-red-400" },
+                      { label: "Sports PnL",            val: w.sportsPnl             != null ? fmtK(w.sportsPnl)                              : "—", color: (w.sportsPnl??0)>0?"text-green":"text-red-400" },
+                      { label: "Sports PnL/cap·d",      val: w.sportsPnlPerCapitalDay!= null ? `$${w.sportsPnlPerCapitalDay.toFixed(4)}`      : "no endDate", color: (w.sportsPnlPerCapitalDay??0)>0?"text-green":"text-red-400" },
                       { label: "Annualized ROIC proxy", val: annualizedRoic          != null ? `${(annualizedRoic*100).toFixed(1)}%/yr`      : "—", color: annualizedRoic!=null&&annualizedRoic>0?"text-green font-bold":"text-muted-foreground" },
                     ].map(({label,val,color})=>(
                       <div key={label} className="flex justify-between items-baseline">
@@ -280,9 +290,10 @@ export default function S4Analysis() {
           </div>
           {/* Interpretation note */}
           <p className="text-[11px] text-muted-foreground mt-2">
-            <span className="text-foreground font-medium">Annualized ROIC proxy</span> = pnlPerCapitalDay × 365 &nbsp;·&nbsp;
-            Units: (USD PnL) / (USD × day) × 365 = dimensionless rate &nbsp;·&nbsp;
-            <span className="text-muted-foreground">W.Med Days (series) reflects the specific tournament economics; wallet-level aggregates all series.</span>
+            <span className="text-foreground font-medium">Sports PnL/cap·d</span> = sportsPnl ÷ Σ(sportsNotional × days) &nbsp;·&nbsp;
+            Numerator and denominator from the same S4 universe — fixes the totalPnl/sportsCapDays mismatch. &nbsp;·&nbsp;
+            <span className="text-foreground font-medium">Annualized</span> = sportsPnlPerCapDay × 365 (dimensionless rate, 1/day × 365). &nbsp;·&nbsp;
+            <span className="text-orange">⚠</span> = sportsTradeShare &lt;30% — PnL coverage partial, metric directional only.
           </p>
         </div>
       )}
