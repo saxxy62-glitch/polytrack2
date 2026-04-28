@@ -81,7 +81,12 @@ export default function SportsArb() {
   const totalVolume     = arbers.reduce((s: number, w: any) => s + w.nearExpiryVolume, 0);
 
   // Median KPIs
-  const medAvgBuy   = median(arbers.filter((w:any) => w.avgBuyPrice != null).map((w:any) => w.avgBuyPrice * 100));
+  // Normalize: Polymarket prices are 0–1; if stored >1 it's a data artifact
+  const normAvgBuy = (v: number): number | null => v <= 1 ? v * 100 : v <= 100 ? v : null;
+  const medAvgBuy  = median(
+    arbers.map((w: any) => normAvgBuy(w.avgBuyPrice ?? 0))
+          .filter((v): v is number => v !== null && v > 0 && v <= 100)
+  );
   const medNearExp  = median(arbers.filter((w:any) => w.nearExpiryCount != null).map((w:any) => w.nearExpiryCount));
 
   return (
@@ -229,7 +234,7 @@ export default function SportsArb() {
                       {((w.winRate ?? 0) * 100).toFixed(0)}%
                     </span>
                   </td>
-                  <td className="px-3 py-2 font-mono">¢{((w.avgBuyPrice ?? 0) * 100).toFixed(0)}</td>
+                  <td className="px-3 py-2 font-mono">¢{((normAvgBuy(w.avgBuyPrice ?? 0) ?? 0).toFixed(0)}</td>
                   <td className="px-3 py-2 font-mono text-orange font-semibold">{w.nearExpiryCount}</td>
                   <td className="px-3 py-2 font-mono">{w.priceBuckets?.["0.97-0.99"] ?? 0}</td>
                   <td className="px-3 py-2 font-mono text-red-400 font-semibold">{w.priceBuckets?.["0.99+"] ?? 0}</td>
