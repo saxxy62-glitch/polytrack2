@@ -1053,6 +1053,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
                   endDates: [],
                   endTsData: [] as Array<{ ts: number; source: string; confidence: string }>,
                   notionals: [] as number[],
+                  pnlSum: 0,
                   sampleSlugs: new Set(),
                   sampleTitle: t.title ?? "",
                 });
@@ -1074,6 +1075,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
                 s.sellNotional  += (t.size ?? 0);
                 s.sellPriceSum  += (t.price ?? 0);
               }
+              // Accumulate per-trade PnL into series (same universe as capitalDays)
+              s.pnlSum += (t.profit ?? (t as any).pnl ?? 0);
               const tradeTsUnix = t.timestamp ?? 0;
               s.timestamps.push(tradeTsUnix);
               let endTs: number | null = null;
@@ -1184,6 +1187,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
                 capitalDays: capitalDays||null,
                 capitalDaysHighConf: capitalDaysHighConf||null,
                 resolutionBuckets: rb,
+                sportsPnl: s.pnlSum || null,
                 sampleSlugs: [...s.sampleSlugs].slice(0,3),
               };
             }).sort((a, b) => b.grossNotional - a.grossNotional);
@@ -1208,6 +1212,15 @@ export function registerRoutes(httpServer: Server, app: Express) {
             // ── Wallet-level time aggregates ──────────────────────────
             const walletCapitalDays    = seriesRows.reduce((s,r)=>s+(r.capitalDays??0),0)||null;
             const walletCapDaysHigh    = seriesRows.reduce((s,r)=>s+(r.capitalDaysHighConf??0),0)||null;
+            // sportsPnl: PnL from trades that entered the S4 series universe only
+            // Numerator and denominator now live in the same universe (fixes semantic bug)
+            const sportsPnl            = seriesRows.reduce((s,r)=>s+(r.sportsPnl??0),0)||null;
+            const sportsPnlPerCapDay   = (sportsPnl != null && walletCapitalDays != null && walletCapitalDays > 0)
+              ? sportsPnl / walletCapitalDays : null;
+            // sportsTradeShare: fraction of total trades that are S4 sports trades
+            const totalTrades          = (wallet as any).totalTrades ?? (wallet as any).tradeCount ?? sportsTrades.length;
+            const sportsTradeShare     = totalTrades > 0 ? sportsTrades.length / totalTrades : null;
+            const pnlMixedWarning      = sportsTradeShare != null && sportsTradeShare < 0.30;
             const globalBuckets = {under1d:0,d1_to_7:0,d7_to_30:0,d30_to_90:0,over90d:0,unknown:0};
             for (const r of seriesRows) {
               const b = r.resolutionBuckets;
@@ -1346,7 +1359,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
               longHorizonTradeShare:            walletLongH,
               capitalDays:                      walletCapitalDays,
               capitalDaysHighConf:              walletCapDaysHigh,
-              pnlPerCapitalDay,
+              sportsPnl,
+              sportsPnlPerCapitalDay:           sportsPnlPerCapDay,
+              pnlPerCapitalDay:                 sportsPnlPerCapDay, // replaced: was totalPnl/sportsCapDays (semantic bug)
+              sportsTradeShare,
+              pnlMixedWarning,
               resolutionBuckets:                globalBuckets,
 
               seriesHedgeRatio,
