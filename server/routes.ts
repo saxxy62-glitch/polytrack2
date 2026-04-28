@@ -853,12 +853,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
-  // Alias: /api/s3-analysis → forward to sports-nearexpiry handler
-  // Using express internal re-route (avoids fetch() TypeScript issues)
-  app.get("/api/s3-analysis", (req, res) => {
-    (req as any).url = "/api/sports-nearexpiry";
-    app._router.handle(req, res, () => res.status(404).json({ error: "not found" }));
-  });
+  // /api/s3-analysis is intentionally not implemented as a separate endpoint.
+  // The SportsArb page reads from /api/sports-nearexpiry directly.
 
 
   // ─── S2 Crypto Up/Down Scalper Analysis ──────────────────────────────────────
