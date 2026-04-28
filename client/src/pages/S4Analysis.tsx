@@ -98,13 +98,21 @@ function WalletRow({ w }: { w: any }) {
             const val = w.sportsPnlPerCapitalDay ?? w.pnlPerCapitalDay;
             const mixed = w.sportsTradeShare != null && w.sportsTradeShare < 0.50;
             if (val == null) return <span className="text-[10px] text-muted-foreground italic">no endDate</span>;
+            const ann = w.annualizedSportsROIC;
             return (
-              <span className="flex items-center gap-1">
-                <span className={val > 0 ? "text-green" : "text-red-400"}>${val.toFixed(3)}</span>
-                {mixed && (
-                  <span
-                    title={`Sports trades = ${w.sportsTradeShare!=null?Math.round(w.sportsTradeShare*100):"?"}% of total (<50%) — notionalShare proxy may be off by 5-10×`}
-                    className="text-[9px] text-orange cursor-help">⚠</span>
+              <span className="flex flex-col gap-0">
+                <span className="flex items-center gap-1">
+                  <span className={val > 0 ? "text-green" : "text-red-400"}>${val.toFixed(3)}</span>
+                  {mixed && (
+                    <span
+                      title={`Sports trades = ${w.sportsTradeShare!=null?Math.round(w.sportsTradeShare*100):"?"}% of total (<50%) — count-based proxy, may be off 5-10×`}
+                      className="text-[9px] text-orange cursor-help">⚠</span>
+                  )}
+                </span>
+                {ann != null && (
+                  <span className="text-[9px] text-muted-foreground font-mono">
+                    {(ann*100).toFixed(0)}%/yr
+                  </span>
                 )}
               </span>
             );
@@ -236,7 +244,8 @@ export default function S4Analysis() {
           </h2>
           <div className="grid gap-4" style={{gridTemplateColumns:`repeat(${Math.min(strongLong.length,3)},1fr)`}}>
             {strongLong.map((w:any, i:number) => {
-              const annualizedRoic = w.sportsPnlPerCapitalDay != null ? w.sportsPnlPerCapitalDay * 365 : (w.pnlPerCapitalDay != null ? w.pnlPerCapitalDay * 365 : null);
+              // Use server-computed value — avoids UI re-derivation from potentially null fields
+              const annualizedRoic = w.annualizedSportsROIC ?? (w.sportsPnlPerCapitalDay != null ? w.sportsPnlPerCapitalDay * 365 : null);
               const archetype = archetypes[i] ?? "S4Long";
               const seriesWMed = w.topSeriesWeightedMedianDays;
               return (
