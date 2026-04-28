@@ -1255,7 +1255,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
             // Group closedPositions by seriesKey (same normalizer as seriesMap)
             const closedByKey = new Map<string, { wins: number; total: number; holdDays: number[] }>();
             for (const cp of closedPositions) {
-              const cpKey = normalizeSeriesKey(cp.slug ?? "");
+              const cpKey = (cp.slug ?? "").toLowerCase().replace(/-/g, "_").replace(/\s+/g, "_");
               if (!closedByKey.has(cpKey)) closedByKey.set(cpKey, { wins: 0, total: 0, holdDays: [] });
               const cs = closedByKey.get(cpKey)!;
               cs.total++;
@@ -1269,7 +1269,10 @@ export function registerRoutes(httpServer: Server, app: Express) {
             }
             // Attach winRate + avgHoldDays to each seriesRow
             for (const row of seriesRows) {
-              const cs = closedByKey.get(row.key);
+              // Try exact key match, then slug-normalized match
+              const cs = closedByKey.get(row.key) ??
+                closedByKey.get(row.key.replace(/_/g, "-")) ??
+                undefined;
               if (cs && cs.total > 0) {
                 (row as any).winRate      = cs.wins / cs.total;
                 (row as any).winCount     = cs.wins;
