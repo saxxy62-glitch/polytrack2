@@ -1186,12 +1186,30 @@ export function registerRoutes(httpServer: Server, app: Express) {
                 capitalDays: capitalDays||null,
                 capitalDaysHighConf: capitalDaysHighConf||null,
                 resolutionBuckets: rb,
-                sportsPnl: null, // RawTrade has no profit field; computed at wallet level via notionalShare proxy
+                sportsPnl: null as number|null,      // filled below via grossNotional-share attribution
+                sportsPnlPerCapDay: null as number|null, // filled below
+                annualizedROIC: null as number|null,     // filled below
                 sampleSlugs: [...s.sampleSlugs].slice(0,3),
               };
             }).sort((a, b) => b.grossNotional - a.grossNotional);
 
             const totalGrossNotional = seriesRows.reduce((s, r) => s + r.grossNotional, 0);
+
+            // ── Series-level sportsPnl attribution ────────────────────────────────
+            // Proxy: distribute walletTotalPnl proportionally by series grossNotional share
+            // Same limitation as wallet-level proxy (uniform PnL/notional assumption),
+            // but enables per-series economics in topSeries drilldown.
+            const _walletPnlForSeries = (wallet as any).totalPnl ?? (wallet as any).pnl ?? 0;
+            if (totalGrossNotional > 0 && _walletPnlForSeries !== 0) {
+              for (const row of seriesRows) {
+                const share = row.grossNotional / totalGrossNotional;
+                (row as any).sportsPnl = _walletPnlForSeries * share;
+                (row as any).sportsPnlPerCapDay = (row.capitalDays != null && row.capitalDays > 0)
+                  ? (row as any).sportsPnl / row.capitalDays : null;
+                (row as any).annualizedROIC = (row as any).sportsPnlPerCapDay != null
+                  ? (row as any).sportsPnlPerCapDay * 365 : null;
+              }
+            }
 
             // Wallet-level series metrics
             const seriesCount = seriesRows.length;
