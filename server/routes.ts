@@ -759,7 +759,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         "nba", "nfl", "mlb", "nhl", "soccer", "tennis", "ufc", "mma",
         "basketball", "football", "baseball", "hockey"];
       const results = await Promise.all(
-        sportsArbers.slice(0, 12).map(async (wallet) => {
+        sportsArbers.slice(0, 20).map(async (wallet) => {
           try {
             const trades = await fetchWalletTrades(wallet.address, 200);
             const nearExpiryTrades = trades.filter(t => {
@@ -777,6 +777,32 @@ export function registerRoutes(httpServer: Server, app: Express) {
               else if (p >= 0.95) buckets["0.95-0.97"]++;
               else buckets["0.93-0.95"]++;
             });
+            // S3 Score = avgBuyPrice×0.4 + (nearExp/total)×0.4 + WR×0.2
+            const nearExpRatio = trades.length > 0 ? nearExpiryTrades.length / trades.length : 0;
+            const s3Score = Math.round(
+              (wallet.avgBuyPrice ?? 0) * 0.4 * 100 +
+              nearExpRatio * 0.4 * 100 +
+              (wallet.winRate ?? 0) * 0.2 * 100
+            );
+            // Sports trade share
+            const sportsTradeCount = trades.filter(t =>
+              sportKeywords.some(kw => (t.title ?? "").toLowerCase().includes(kw))
+            ).length;
+            const sportsTradeShare = trades.length > 0 ? sportsTradeCount / trades.length : 0;
+            // Time-to-expiry distribution for near-expiry trades
+            const tteBuckets: Record<string, number> = {
+              "under30s": 0, "30s_2m": 0, "2m_10m": 0, "over10m": 0, "unknown": 0
+            };
+            nearExpiryTrades.forEach(t => {
+              const raw = (t as any).endDate || (t as any).fpmm?.endDate;
+              if (!raw) { tteBuckets.unknown++; return; }
+              const endTs = new Date(raw).getTime() / 1000;
+              const secs  = endTs - (t.timestamp ?? 0);
+              if      (secs < 30)   tteBuckets["under30s"]++;
+              else if (secs < 120)  tteBuckets["30s_2m"]++;
+              else if (secs < 600)  tteBuckets["2m_10m"]++;
+              else                  tteBuckets["over10m"]++;
+            });
             return {
               address: wallet.address, name: wallet.pseudonym || wallet.name,
               winRate: wallet.winRate, avgBuyPrice: wallet.avgBuyPrice,
@@ -784,6 +810,9 @@ export function registerRoutes(httpServer: Server, app: Express) {
               avgTradeSize: wallet.avgTradeSize,
               nearExpiryCount: nearExpiryTrades.length, nearExpiryVolume: totalVolume,
               priceBuckets: buckets,
+              tteBuckets,
+              s3Score,
+              sportsTradeShare,
               sampleTrades: nearExpiryTrades.slice(0, 5).map(t => ({
                 title: t.title, price: t.price, size: t.size,
                 timestamp: t.timestamp, outcome: t.outcome,
@@ -819,7 +848,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const s2Wallets = s2Candidates;
 
       const results = await Promise.all(
-        s2Wallets.slice(0, 15).map(async (wallet) => {
+        s2Wallets.slice(0, 30).map(async (wallet) => {
           try {
             const rawTrades = await fetchWalletTrades(wallet.address, 300);
             // Enrich with endDate from gamma market API (cached)
@@ -932,7 +961,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
       const filtered = results.filter(Boolean);
       res.json({
-        s2Wallets: filtered.sort((a: any, b: any) => b.avgUpDownRatio - a.avgUpDownRatio),
+        s2Wallets: filtered.sort((a: any, b: any) => (b.priceBuckets?.["0.99+"] ?? 0) - (a.priceBuckets?.["0.99+"] ?? 0)),
         summary: {
           totalScanned: s2Wallets.length,
           withUpDownTrades: filtered.filter((r: any) => r.upDownTradeCount > 0).length,
