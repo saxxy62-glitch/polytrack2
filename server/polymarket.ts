@@ -556,8 +556,8 @@ export function estimateEndDateForSports(title: string, tradeTimestamp: number):
       january:1, february:2, march:3, april:4, may:5, june:6, july:7, august:8,
       september:9, october:10, november:11, december:12
     };
-    const mon = monthNames[matchDate[1].slice(0,3).toLowerCase()];
-    const day = parseInt(matchDate[2], 10);
+    const mon = matchDate[1] ? monthNames[matchDate[1].slice(0, 3).toLowerCase()] : undefined;
+    const day = matchDate[2] ? parseInt(matchDate[2], 10) : 0;
     if (mon && day >= 1 && day <= 31) {
       // Use current year; if date already passed by >30 days, try next year
       const candidate = new Date(Date.UTC(yr, mon - 1, day, 23, 59, 0));
@@ -569,14 +569,13 @@ export function estimateEndDateForSports(title: string, tradeTimestamp: number):
   // Numeric date: "4/30", "04-30", "30/4" (day/month EU style)
   const numDate = t.match(/\b(\d{1,2})[\-\/](\d{1,2})\b/);
   if (numDate) {
-    const a = parseInt(numDate[1], 10), b2 = parseInt(numDate[2], 10);
-    // Heuristic: if a <= 12 && b2 <= 31 → MM/DD; if a > 12 → DD/MM
+    const a = numDate[1] ? parseInt(numDate[1], 10) : 0, b2 = numDate[2] ? parseInt(numDate[2], 10) : 0;
     const [mon2, day2] = a > 12 ? [b2, a] : [a, b2];
     if (mon2 >= 1 && mon2 <= 12 && day2 >= 1 && day2 <= 31) {
-      const candidate = new Date(Date.UTC(yr, mon2 - 1, day2, 23, 59, 0));
-      const tradeTs   = tradeTimestamp * 1000;
-      if (Math.abs(candidate.getTime() - tradeTs) < 30 * 86400000) {
-        return candidate.toISOString();
+      const candidate2 = new Date(Date.UTC(yr, mon2 - 1, day2, 23, 59, 0));
+      const tradeTs2   = tradeTimestamp * 1000;
+      if (Math.abs(candidate2.getTime() - tradeTs2) < 30 * 86400000) {
+        return candidate2.toISOString();
       }
     }
   }
