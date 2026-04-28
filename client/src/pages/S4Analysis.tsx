@@ -96,14 +96,14 @@ function WalletRow({ w }: { w: any }) {
         <td className="px-3 py-2 font-mono text-xs">
           {(() => {
             const val = w.sportsPnlPerCapitalDay ?? w.pnlPerCapitalDay;
-            const mixed = w.sportsTradeShare != null && w.sportsTradeShare < 0.30;
+            const mixed = w.sportsTradeShare != null && w.sportsTradeShare < 0.50;
             if (val == null) return <span className="text-[10px] text-muted-foreground italic">no endDate</span>;
             return (
               <span className="flex items-center gap-1">
                 <span className={val > 0 ? "text-green" : "text-red-400"}>${val.toFixed(3)}</span>
                 {mixed && (
                   <span
-                    title={`Sports trades = ${w.sportsTradeShare!=null?Math.round(w.sportsTradeShare*100):"?"}% of total — mixed PnL, metric unreliable`}
+                    title={`Sports trades = ${w.sportsTradeShare!=null?Math.round(w.sportsTradeShare*100):"?"}% of total (<50%) — notionalShare proxy may be off by 5-10×`}
                     className="text-[9px] text-orange cursor-help">⚠</span>
                 )}
               </span>
@@ -265,8 +265,8 @@ export default function S4Analysis() {
                       { label: "W.Med Days (series)",   val: seriesWMed              != null ? `${seriesWMed.toFixed(0)}d`                   : "—", color: "text-blue" },
                       { label: "W.Med Days (wallet)",   val: w.weightedMedianDaysToResolution != null ? `${w.weightedMedianDaysToResolution.toFixed(0)}d` : "—", color: "text-muted-foreground" },
                       { label: "Capital-Days",          val: w.capitalDays           != null ? fmtK(w.capitalDays)                           : "—", color: "" },
-                      { label: "Sports PnL",            val: w.sportsPnl             != null ? fmtK(w.sportsPnl)                              : "—", color: (w.sportsPnl??0)>0?"text-green":"text-red-400" },
-                      { label: "Sports PnL/cap·d",      val: w.sportsPnlPerCapitalDay!= null ? `$${w.sportsPnlPerCapitalDay.toFixed(4)}`      : "no endDate", color: (w.sportsPnlPerCapitalDay??0)>0?"text-green":"text-red-400" },
+                      { label: "Sports PnL (est.)",            val: w.sportsPnl             != null ? fmtK(w.sportsPnl)                              : "—", color: (w.sportsPnl??0)>0?"text-green":"text-red-400" },
+                      { label: "Sports PnL/cap·d (est.)",      val: w.sportsPnlPerCapitalDay!= null ? `$${w.sportsPnlPerCapitalDay.toFixed(4)}`      : "no endDate", color: (w.sportsPnlPerCapitalDay??0)>0?"text-green":"text-red-400" },
                       { label: "Annualized ROIC proxy", val: annualizedRoic          != null ? `${(annualizedRoic*100).toFixed(1)}%/yr`      : "—", color: annualizedRoic!=null&&annualizedRoic>0?"text-green font-bold":"text-muted-foreground" },
                     ].map(({label,val,color})=>(
                       <div key={label} className="flex justify-between items-baseline">
@@ -302,7 +302,7 @@ export default function S4Analysis() {
             <span className="text-foreground font-medium">Sports PnL/cap·d</span> = sportsPnl ÷ Σ(sportsNotional × days) &nbsp;·&nbsp;
             Numerator and denominator from the same S4 universe — fixes the totalPnl/sportsCapDays mismatch. &nbsp;·&nbsp;
             <span className="text-foreground font-medium">Annualized</span> = sportsPnlPerCapDay × 365 (dimensionless rate, 1/day × 365). &nbsp;·&nbsp;
-            <span className="text-orange">⚠</span> = sportsTradeShare &lt;30% — PnL coverage partial, metric directional only.
+            <span className="text-orange">⚠</span> = sportsTradeShare &lt;50% — notionalShare proxy; assumes uniform PnL/notional ratio across categories, may be off 5-10× for low-sports-share wallets.
           </p>
         </div>
       )}
