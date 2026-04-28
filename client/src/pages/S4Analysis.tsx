@@ -36,8 +36,26 @@ function SeriesRow({ s }: { s: any }) {
       <td className="px-3 py-1.5 font-mono">{fmtK(s.grossNotional)}</td>
       <td className="px-3 py-1.5 font-mono" style={{color:hclr(s.hedgeRatio)}}>{pct(s.hedgeRatio)}</td>
       <td className="px-3 py-1.5 font-mono text-blue">{c(s.avgBuyPrice)}</td>
-      <td className="px-3 py-1.5 font-mono">{days(s.medianDaysToResolution)}</td>
-      <td className="px-3 py-1.5 font-mono">{days(s.weightedMedianDaysToResolution)}</td>
+      <td className="px-3 py-1.5 font-mono text-blue">
+        {s.weightedMedianDaysToResolution != null
+          ? `${s.weightedMedianDaysToResolution.toFixed(0)}d`
+          : <span className="text-muted-foreground text-[9px] italic">no endDate</span>}
+      </td>
+      <td className="px-3 py-1.5 font-mono">
+        {s.avgHoldDays != null
+          ? <span className="text-cyan">{s.avgHoldDays.toFixed(0)}d</span>
+          : <span className="text-muted-foreground text-[9px]">—</span>}
+      </td>
+      <td className="px-3 py-1.5 font-mono">
+        {s.winRate != null
+          ? <span className={s.winRate >= 0.6 ? "text-green font-semibold" : s.winRate >= 0.4 ? "text-yellow" : "text-red-400"}>
+              {Math.round(s.winRate * 100)}%
+              <span className="text-muted-foreground font-normal text-[9px] ml-0.5">
+                ({s.winCount}/{s.closedCount})
+              </span>
+            </span>
+          : <span className="text-muted-foreground text-[9px]">no closed</span>}
+      </td>
       <td className="px-3 py-1.5 font-mono text-orange">{pct(s.nearExpiryTradeShare)}</td>
       <td className="px-3 py-1.5 font-mono text-blue">{pct(s.longHorizonTradeShare)}</td>
     </tr>
@@ -132,7 +150,7 @@ function WalletRow({ w }: { w: any }) {
             <p className="text-[10px] text-muted-foreground mb-1 font-medium uppercase tracking-wider">Series Drilldown</p>
             <table className="w-full">
               <thead><tr className="border-b border-border/30">
-                {["Series","Outcomes","Gross $","Hedge%","Avg Buy","Median Days","W.Med Days","Near-exp%","Long%"].map(h=>(
+                {["Series","Outcomes","Gross $","Hedge%","Avg Buy","W.Med Days","Avg Hold","Win Rate","Near-exp%","Long%"].map(h=>(
                   <th key={h} className="text-left px-3 py-1 text-muted-foreground font-medium text-[10px]">{h}</th>
                 ))}
               </tr></thead>
