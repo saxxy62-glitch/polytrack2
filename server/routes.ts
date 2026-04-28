@@ -1212,26 +1212,27 @@ export function registerRoutes(httpServer: Server, app: Express) {
             const walletCapitalDays    = seriesRows.reduce((s,r)=>s+(r.capitalDays??0),0)||null;
             const walletCapDaysHigh    = seriesRows.reduce((s,r)=>s+(r.capitalDaysHighConf??0),0)||null;
             // ── sportsPnl proxy ───────────────────────────────────────────────────────
-            // RawTrade has no profit field → we estimate sportsPnl via notional share proxy:
-            //   sportsPnl_est = totalPnl × (sportsGrossNotional / wallet.totalVolume)
-            // Assumption: PnL/notional ratio is uniform across categories — this may be wrong
-            // (sports can have much higher ROI per dollar than high-volume crypto trades).
-            // Hence: denominator = sportsCapitalDays only (not walletCapitalDays),
-            //        warning threshold = 50% (not 30%) — below 50% the proxy is too crude.
-            const sportsGrossNotional  = seriesRows.reduce((s,r)=>s+(r.grossNotional??0),0);
-            const walletTotalVolume    = (wallet as any).totalVolume ?? (wallet as any).volume ?? sportsGrossNotional;
-            const sportsNotionalShare  = walletTotalVolume > 0 ? sportsGrossNotional / walletTotalVolume : null;
+            // RawTrade has no profit field → estimate via trade-count share (same source as sportsTradeShare):
+            //   sportsPnl_est = totalPnl × (sportsTradeCount / totalTradeCount)
+            // Count-based is less accurate than notional-based (different PnL/trade across categories),
+            // but notional-based fails because wallet.totalVolume is null/0 in leaderboard data.
+            // Warning threshold = 50%: below this, proxy may be off by 5-10× due to ROI variance.
+            const totalTrades_         = (wallet as any).totalTrades ?? (wallet as any).tradeCount ?? sportsTrades.length;
+            const sportsTradeCount_    = sportsTrades.length;
+            const sportsCountShare     = totalTrades_ > 0 && sportsTradeCount_ > 0
+              ? sportsTradeCount_ / totalTrades_ : null;
             const walletTotalPnl       = (wallet as any).totalPnl ?? (wallet as any).pnl ?? 0;
-            // Only compute proxy when we have a real totalVolume to anchor against
-            const sportsPnl            = (sportsNotionalShare != null && walletTotalVolume !== sportsGrossNotional && walletTotalPnl !== 0)
-              ? walletTotalPnl * sportsNotionalShare : null;
-            // Denominator: sportsCapitalDays only — keeps numerator/denominator in same universe
-            const sportsCapitalDays    = walletCapitalDays; // already computed from seriesRows only
+            // sportsPnl: defined only when sportsCountShare is meaningful (<100% to avoid trivial case)
+            const sportsPnl            = (sportsCountShare != null && sportsCountShare < 1.0 && walletTotalPnl !== 0)
+              ? walletTotalPnl * sportsCountShare : null;
+            // Denominator: walletCapitalDays already computed from seriesRows only — correct universe
+            const sportsCapitalDays    = walletCapitalDays;
             const sportsPnlPerCapDay   = (sportsPnl != null && sportsCapitalDays != null && sportsCapitalDays > 0)
               ? sportsPnl / sportsCapitalDays : null;
-            // sportsTradeShare: fraction of total trades that are S4 sports trades
-            const totalTrades          = (wallet as any).totalTrades ?? (wallet as any).tradeCount ?? sportsTrades.length;
-            const sportsTradeShare     = totalTrades > 0 ? sportsTrades.length / totalTrades : null;
+            // Also expose gross notional for reference (not used in proxy)
+            const sportsGrossNotional  = seriesRows.reduce((s,r)=>s+(r.grossNotional??0),0);
+            // sportsTradeShare: fraction of total trades that are S4 sports trades (reuse totalTrades_)
+            const sportsTradeShare     = totalTrades_ > 0 ? sportsTrades.length / totalTrades_ : null;
             // Warning at 50% (not 30%): below 50% sportsShare the notionalShare proxy
             // can be off by 5-10x due to differing PnL/notional ratios across categories
             const pnlMixedWarning      = sportsTradeShare != null && sportsTradeShare < 0.50;
