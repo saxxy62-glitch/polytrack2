@@ -474,9 +474,15 @@ export function registerRoutes(httpServer: Server, app: Express) {
       bootstrapProgress,
       bootstrapTotal,
       walletCount: allWallets.length,
-      signalWatcherCount: topWalletSet.size,   // total pool (Phase 1 + Phase 2)
-      highEvWatcherCount,                       // subset with EV >= 0.3 (real signal candidates)
+      signalWatcherCount: topWalletSet.size,
+      highEvWatcherCount,
       tradeCount: storage.getTradeCount(),
+      // Diagnostics for S2/S3/S4 filters
+      walletsWithMarkets: allWallets.filter(w => { try { return JSON.parse(w.markets ?? "[]").length > 0; } catch { return false; } }).length,
+      walletsWithSports:  allWallets.filter(w => { try { return JSON.parse(w.markets ?? "[]").includes("Sports"); } catch { return false; } }).length,
+      walletsWithCrypto:  allWallets.filter(w => { try { return JSON.parse(w.markets ?? "[]").includes("Crypto"); } catch { return false; } }).length,
+      walletsWithTrades:  allWallets.filter(w => (w.totalTrades ?? 0) > 0).length,
+      walletsWithUpDown:  allWallets.filter(w => (w.avgUpDownRatio ?? 0) > 0.10).length,
     });
   });
 
@@ -857,11 +863,20 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const allWallets = storage.getAllWallets();
       // Filter: either avgUpDownRatio already computed (>25%) OR has Crypto markets
       // We re-derive ratio from live trades below, so wide filter is OK — scoring happens inside
-      const s2Candidates = allWallets.filter(w => {
+      let s2Candidates = allWallets.filter(w => {
         const markets: string[] = (() => { try { return JSON.parse(w.markets ?? "[]"); } catch { return []; } })();
         const hasCrypto = markets.includes("Crypto") || (w.avgUpDownRatio ?? 0) > 0.10;
         return hasCrypto && (w.winRate ?? 0) > 0.60 && (w.totalTrades ?? 0) > 0;
       });
+      // Fallback: if markets[] not yet populated, use any wallet with upDown ratio or mid-price
+      if (s2Candidates.length === 0) {
+        s2Candidates = allWallets.filter(w =>
+          w.address?.startsWith("0x") &&
+          (w.winRate ?? 0) > 0.55 &&
+          (w.totalTrades ?? 0) > 5 &&
+          (w.avgBuyPrice ?? 0) > 0.25 && (w.avgBuyPrice ?? 0) < 0.75
+        ).slice(0, 30);
+      }
       // We'll recompute upDownRatio from actual trades and filter post-hoc
       const s2Wallets = s2Candidates;
 
@@ -1009,12 +1024,21 @@ export function registerRoutes(httpServer: Server, app: Express) {
         const midPrice  = (w.avgBuyPrice ?? 0) >= 0.25 && (w.avgBuyPrice ?? 0) <= 0.78;
         return hasSports && midPrice && (w.winRate ?? 0) > 0.60 && (w.totalTrades ?? 0) > 0;
       });
-      // Fallback: if strict filter yields nothing (e.g. after bootstrap reset), relax to any Sports wallet
+      // Fallback 1: relax to any Sports wallet (no avgBuyPrice/winRate req)
       if (s4Candidates.length === 0) {
         s4Candidates = allWallets.filter(w => {
           const markets: string[] = (() => { try { return JSON.parse(w.markets ?? "[]"); } catch { return []; } })();
           return markets.includes("Sports") && (w.totalTrades ?? 0) > 0 && w.address?.startsWith("0x");
         });
+      }
+      // Fallback 2: if markets[] not yet populated (bootstrap still in progress),
+      // use any high-winRate wallet with real address as proxy
+      if (s4Candidates.length === 0) {
+        s4Candidates = allWallets.filter(w =>
+          w.address?.startsWith("0x") &&
+          (w.winRate ?? 0) > 0.60 &&
+          (w.totalTrades ?? 0) > 10
+        ).slice(0, 30);
       }
 
       // ── Series key normalizer ────────────────────────────────────────────────────
