@@ -78,7 +78,7 @@ function Nav() {
 
         <div className="flex items-center gap-1">
           <NavLink href="/">Dashboard</NavLink>
-          <NavLink href="/sports-arb">🎯 Sports Arb</NavLink>
+          <NavLink href="/sports-arb">⚡ S3 Analysis</NavLink>
           <NavLink href="/s2">⚡ S2 Analysis</NavLink>
           <NavLink href="/s4">🏆 S4 Analysis</NavLink>
           <NavLink href="/signals">
