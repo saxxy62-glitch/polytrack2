@@ -853,8 +853,15 @@ export function registerRoutes(httpServer: Server, app: Express) {
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
-  // Alias: /api/s3-analysis → same handler (consistent with S2/S4 naming)
-  app.get("/api/s3-analysis", (_req, res) => res.redirect("/api/sports-nearexpiry"));
+  // Alias: /api/s3-analysis → same data as /api/sports-nearexpiry
+  // Note: redirect doesn't work with fetch() due to CORS — use internal forward
+  app.get("/api/s3-analysis", async (req, res) => {
+    try {
+      const resp = await fetch(`http://localhost:${process.env.PORT ?? 10000}/api/sports-nearexpiry`);
+      const json = await resp.json();
+      res.json(json);
+    } catch { res.redirect("/api/sports-nearexpiry"); }
+  });
 
 
   // ─── S2 Crypto Up/Down Scalper Analysis ──────────────────────────────────────
