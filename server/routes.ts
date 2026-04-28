@@ -759,8 +759,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const sportKeywords = ["vs.", " vs ", "game", "match", "series", "playoffs",
         "nba", "nfl", "mlb", "nhl", "soccer", "tennis", "ufc", "mma",
         "basketball", "football", "baseball", "hockey"];
-      const results = await Promise.all(
-        sportsArbers.slice(0, 20).map(async (wallet) => {
+      // Batched to avoid timeout
+      const s3Batch = sportsArbers.slice(0, 15);
+      const results: any[] = [];
+      for (let i = 0; i < s3Batch.length; i += 5) {
+        const chunk = await Promise.all(s3Batch.slice(i, i + 5).map(async (wallet) => {
           try {
             if (!wallet.address?.startsWith("0x")) return null;
             const trades = await fetchWalletTrades(wallet.address, 200);
@@ -821,8 +824,9 @@ export function registerRoutes(httpServer: Server, app: Express) {
               })),
             };
           } catch { return null; }
-        })
-      );
+        }));
+        results.push(...chunk);
+      }
       const filtered = results.filter(Boolean);
       res.json({
         sportsArbers: filtered.sort((a: any, b: any) => b.nearExpiryCount - a.nearExpiryCount),
@@ -849,8 +853,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
       // We'll recompute upDownRatio from actual trades and filter post-hoc
       const s2Wallets = s2Candidates;
 
-      const results = await Promise.all(
-        s2Wallets.slice(0, 30).map(async (wallet) => {
+      // Batched to avoid Render free-tier timeout (5 concurrent max)
+      const s2Batch = s2Wallets.slice(0, 20);
+      const results: any[] = [];
+      for (let i = 0; i < s2Batch.length; i += 5) {
+        const chunk = await Promise.all(s2Batch.slice(i, i + 5).map(async (wallet) => {
           try {
             if (!wallet.address?.startsWith("0x")) return null;
             const rawTrades = await fetchWalletTrades(wallet.address, 300);
@@ -959,8 +966,9 @@ export function registerRoutes(httpServer: Server, app: Express) {
               proximityBuckets: proxBuckets,
             };
           } catch { return null; }
-        })
-      );
+        }));
+        results.push(...chunk);
+      }
 
       const filtered = results.filter(Boolean);
       res.json({
@@ -983,12 +991,19 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const allWallets = storage.getAllWallets();
 
       // Pre-filter: Sports markets, mid-price, decent WR
-      const s4Candidates = allWallets.filter(w => {
+      let s4Candidates = allWallets.filter(w => {
         const markets: string[] = (() => { try { return JSON.parse(w.markets ?? "[]"); } catch { return []; } })();
         const hasSports = markets.includes("Sports");
         const midPrice  = (w.avgBuyPrice ?? 0) >= 0.25 && (w.avgBuyPrice ?? 0) <= 0.78;
         return hasSports && midPrice && (w.winRate ?? 0) > 0.60 && (w.totalTrades ?? 0) > 0;
       });
+      // Fallback: if strict filter yields nothing (e.g. after bootstrap reset), relax to any Sports wallet
+      if (s4Candidates.length === 0) {
+        s4Candidates = allWallets.filter(w => {
+          const markets: string[] = (() => { try { return JSON.parse(w.markets ?? "[]"); } catch { return []; } })();
+          return markets.includes("Sports") && (w.totalTrades ?? 0) > 0 && w.address?.startsWith("0x");
+        });
+      }
 
       // ── Series key normalizer ────────────────────────────────────────────────────
       // Series key parsing → see server/seriesParser.ts (deterministic rule-based)
