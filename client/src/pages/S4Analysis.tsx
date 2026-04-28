@@ -94,20 +94,21 @@ function WalletRow({ w }: { w: any }) {
             : <span className="text-[10px] text-muted-foreground italic">—</span>}
         </td>
         <td className="px-3 py-2 font-mono text-xs">
-          {!w.strongS4Candidate
-            ? <span className="text-[10px] text-muted-foreground">—</span>
-            : w.pnlPerCapitalDay != null
-              ? <span className="flex items-center gap-1">
-                  <span className={w.pnlPerCapitalDay > 0 ? "text-green" : "text-red-400"}>
-                    ${w.pnlPerCapitalDay.toFixed(3)}
-                  </span>
-                  {w.pnlMixedWarning && (
-                    <span title={`Sports trades = ${w.sportsTradeShare!=null?Math.round(w.sportsTradeShare*100):"?"}% of total — PnL universe mismatch`}
-                      className="text-[9px] text-orange cursor-help">⚠</span>
-                  )}
-                </span>
-              : <span className="text-[10px] text-muted-foreground italic">no endDate</span>
-          }
+          {(() => {
+            const val = w.sportsPnlPerCapitalDay ?? w.pnlPerCapitalDay;
+            const mixed = w.sportsTradeShare != null && w.sportsTradeShare < 0.30;
+            if (val == null) return <span className="text-[10px] text-muted-foreground italic">no endDate</span>;
+            return (
+              <span className="flex items-center gap-1">
+                <span className={val > 0 ? "text-green" : "text-red-400"}>${val.toFixed(3)}</span>
+                {mixed && (
+                  <span
+                    title={`Sports trades = ${w.sportsTradeShare!=null?Math.round(w.sportsTradeShare*100):"?"}% of total — mixed PnL, metric unreliable`}
+                    className="text-[9px] text-orange cursor-help">⚠</span>
+                )}
+              </span>
+            );
+          })()}
         </td>
         <td className="px-3 py-2 font-mono text-xs">
           {w.s4Score != null ? (
@@ -139,7 +140,15 @@ function WalletRow({ w }: { w: any }) {
 // ── Main page ──────────────────────────────────────────────────────────────
 export default function S4Analysis() {
   const { data, isLoading } = useQuery<any>({ queryKey:["/api/s4-analysis"], refetchInterval:120_000 });
-  const wallets  = [...(data?.s4Wallets ?? [])].sort((a:any,b:any)=>(b.s4Score??0)-(a.s4Score??0));
+  const [sortBy, setSortBy] = useState<"s4Score"|"pnlCapDay">("s4Score");
+  const wallets = [...(data?.s4Wallets ?? [])].sort((a:any, b:any) => {
+    if (sortBy === "pnlCapDay") {
+      const av = a.sportsPnlPerCapitalDay ?? a.pnlPerCapitalDay ?? -Infinity;
+      const bv = b.sportsPnlPerCapitalDay ?? b.pnlPerCapitalDay ?? -Infinity;
+      return bv - av;
+    }
+    return (b.s4Score ?? 0) - (a.s4Score ?? 0);
+  });
   const summary  = data?.summary   ?? {};
 
   // Resolution buckets stacked bar (top 8 wallets)
@@ -388,9 +397,21 @@ export default function S4Analysis() {
                 <tr>
                   <th className="w-5 px-2 py-2"/>
                   {["Wallet","PnL","Avg Buy","Avg Size","Series","Top Series","Outcomes","Hedge%",
-                    "W.Med d","Near%","Long%","PnL/cap·d","Score"].map(h=>(
+                    "W.Med d","Near%","Long%"].map(h=>(
                     <th key={h} className="text-left px-3 py-2 text-muted-foreground font-medium whitespace-nowrap">{h}</th>
                   ))}
+                  <th className="text-left px-3 py-2 font-medium whitespace-nowrap">
+                    <button onClick={()=>setSortBy("pnlCapDay")}
+                      className={`flex items-center gap-1 transition-colors ${sortBy==="pnlCapDay"?"text-green":"text-muted-foreground hover:text-foreground"}`}>
+                      PnL/cap·d {sortBy==="pnlCapDay"&&"↓"}
+                    </button>
+                  </th>
+                  <th className="text-left px-3 py-2 font-medium whitespace-nowrap">
+                    <button onClick={()=>setSortBy("s4Score")}
+                      className={`flex items-center gap-1 transition-colors ${sortBy==="s4Score"?"text-blue":"text-muted-foreground hover:text-foreground"}`}>
+                      Score {sortBy==="s4Score"&&"↓"}
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody>{wallets.map((w:any)=><WalletRow key={w.address} w={w}/>)}</tbody>
