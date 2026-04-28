@@ -277,6 +277,7 @@ export default function S4Analysis() {
                       { label: "Sports PnL (est.)",            val: w.sportsPnl             != null ? fmtK(w.sportsPnl)                              : "—", color: (w.sportsPnl??0)>0?"text-green":"text-red-400" },
                       { label: "Sports PnL/cap·d (est.)",      val: w.sportsPnlPerCapitalDay!= null ? `$${w.sportsPnlPerCapitalDay.toFixed(4)}`      : "no endDate", color: (w.sportsPnlPerCapitalDay??0)>0?"text-green":"text-red-400" },
                       { label: "Annualized ROIC proxy", val: annualizedRoic          != null ? `${(annualizedRoic*100).toFixed(1)}%/yr`      : "—", color: annualizedRoic!=null&&annualizedRoic>0?"text-green font-bold":"text-muted-foreground" },
+                      { label: "", val: "Annualized, based on est. sports capital-days", color: "text-[10px] text-muted-foreground italic" },
                     ].map(({label,val,color})=>(
                       <div key={label} className="flex justify-between items-baseline">
                         <span className="text-[11px] text-muted-foreground">{label}</span>
@@ -310,7 +311,7 @@ export default function S4Analysis() {
           <p className="text-[11px] text-muted-foreground mt-2">
             <span className="text-foreground font-medium">Sports PnL/cap·d</span> = sportsPnl ÷ Σ(sportsNotional × days) &nbsp;·&nbsp;
             Numerator and denominator from the same S4 universe — fixes the totalPnl/sportsCapDays mismatch. &nbsp;·&nbsp;
-            <span className="text-foreground font-medium">Annualized</span> = sportsPnlPerCapDay × 365 (dimensionless rate, 1/day × 365). &nbsp;·&nbsp;
+            <span className="text-foreground font-medium">Annualized</span> = sportsPnlPerCapDay × 365 — annualized, based on estimated sports capital-days. &nbsp;·&nbsp;
             <span className="text-orange">⚠</span> = sportsTradeShare &lt;50% — notionalShare proxy; assumes uniform PnL/notional ratio across categories, may be off 5-10× for low-sports-share wallets.
           </p>
         </div>
