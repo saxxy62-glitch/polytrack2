@@ -966,7 +966,10 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const results = await Promise.all(
         s4Candidates.slice(0, 25).map(async (wallet) => {
           try {
-            const trades = await fetchWalletTrades(wallet.address, 500);
+            const [trades, closedPositions] = await Promise.all([
+              fetchWalletTrades(wallet.address, 500),
+              fetchClosedPositionsForChart(wallet.address).catch(() => [] as any[]),
+            ]);
 
             const sportsTrades = trades.filter(t => {
               if (isExcludedFromS4(t.title ?? "")) return false;
@@ -1189,11 +1192,45 @@ export function registerRoutes(httpServer: Server, app: Express) {
                 sportsPnl: null as number|null,      // filled below via grossNotional-share attribution
                 sportsPnlPerCapDay: null as number|null, // filled below
                 annualizedROIC: null as number|null,     // filled below
+                winRate: null as number|null,            // filled from closedPositions
+                winCount: null as number|null,
+                closedCount: null as number|null,
+                avgHoldDays: null as number|null,        // filled from closedPositions endDate-timestamp
                 sampleSlugs: [...s.sampleSlugs].slice(0,3),
               };
             }).sort((a, b) => b.grossNotional - a.grossNotional);
 
             const totalGrossNotional = seriesRows.reduce((s, r) => s + r.grossNotional, 0);
+
+            // ── Per-series winRate + avgHoldDays from closed positions ────────────
+            // Group closedPositions by seriesKey (same normalizer as seriesMap)
+            const closedByKey = new Map<string, { wins: number; total: number; holdDays: number[] }>();
+            for (const cp of closedPositions) {
+              const cpKey = normalizeSeriesKey(cp.slug ?? "");
+              if (!closedByKey.has(cpKey)) closedByKey.set(cpKey, { wins: 0, total: 0, holdDays: [] });
+              const cs = closedByKey.get(cpKey)!;
+              cs.total++;
+              if ((cp.realizedPnl ?? 0) > 0) cs.wins++;
+              // avgHoldDays: endDate - trade timestamp
+              if (cp.endDate && cp.timestamp) {
+                const endTs = Math.floor(new Date(cp.endDate).getTime() / 1000);
+                const holdD = (endTs - cp.timestamp) / 86400;
+                if (holdD > 0 && holdD < 3650) cs.holdDays.push(holdD);
+              }
+            }
+            // Attach winRate + avgHoldDays to each seriesRow
+            for (const row of seriesRows) {
+              const cs = closedByKey.get(row.key);
+              if (cs && cs.total > 0) {
+                (row as any).winRate      = cs.wins / cs.total;
+                (row as any).winCount     = cs.wins;
+                (row as any).closedCount  = cs.total;
+              }
+              if (cs && cs.holdDays.length > 0) {
+                const sum = cs.holdDays.reduce((a, b) => a + b, 0);
+                (row as any).avgHoldDays  = sum / cs.holdDays.length;
+              }
+            }
 
             // ── Series-level sportsPnl attribution ────────────────────────────────
             // Proxy: distribute walletTotalPnl proportionally by series grossNotional share
