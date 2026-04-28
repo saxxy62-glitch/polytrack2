@@ -312,7 +312,11 @@ export default function S4Analysis() {
             <span className="text-foreground font-medium">Sports PnL/cap·d</span> = sportsPnl ÷ Σ(sportsNotional × days) &nbsp;·&nbsp;
             Numerator and denominator from the same S4 universe — fixes the totalPnl/sportsCapDays mismatch. &nbsp;·&nbsp;
             <span className="text-foreground font-medium">Annualized</span> = sportsPnlPerCapDay × 365 — annualized, based on estimated sports capital-days. &nbsp;·&nbsp;
-            <span className="text-orange">⚠</span> = sportsTradeShare &lt;50% — notionalShare proxy; assumes uniform PnL/notional ratio across categories, may be off 5-10× for low-sports-share wallets.
+            <span className="text-orange">⚠</span> = sportsTradeShare &lt;50% — count-based proxy, may be off 5-10× for low-sports-share wallets.
+          </p>
+          <p className="text-[11px] mt-1 px-3 py-1.5 bg-surface-offset/60 rounded border border-border/40 text-muted-foreground">
+            <span className="text-foreground font-medium">Note:</span>{" "}
+            PnL/cap·d and ROIC are proportional-allocation proxies, useful for ranking — not exact realized returns.
           </p>
         </div>
       )}
@@ -389,6 +393,9 @@ export default function S4Analysis() {
           <h2 className="text-sm font-medium flex items-center gap-2">
             <Clock className="w-4 h-4 text-muted-foreground"/>
             S4 Wallets · click row for series drilldown
+            <span className="text-[10px] font-normal text-muted-foreground">
+              · PnL/cap·d = ranking proxy, not audited returns
+            </span>
           </h2>
           <div className="flex gap-3 text-[10px] text-muted-foreground">
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block"/>&lt;1d near-expiry</span>
