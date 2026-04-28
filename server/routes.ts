@@ -1222,13 +1222,18 @@ export function registerRoutes(httpServer: Server, app: Express) {
             const sportsCountShare     = totalTrades_ > 0 && sportsTradeCount_ > 0
               ? sportsTradeCount_ / totalTrades_ : null;
             const walletTotalPnl       = (wallet as any).totalPnl ?? (wallet as any).pnl ?? 0;
-            // sportsPnl: defined only when sportsCountShare is meaningful (<100% to avoid trivial case)
-            const sportsPnl            = (sportsCountShare != null && sportsCountShare < 1.0 && walletTotalPnl !== 0)
+            // sportsPnl: count-based proxy when sportsTradeShare is partial (not 100% = pure sports wallet)
+            // If sportsCountShare = 1.0, totalPnl IS sportsPnl — no scaling needed
+            const sportsPnl            = sportsCountShare != null && walletTotalPnl !== 0
               ? walletTotalPnl * sportsCountShare : null;
-            // Denominator: walletCapitalDays already computed from seriesRows only — correct universe
+            // Denominator: walletCapitalDays = Σ(notional×days) from seriesRows only — correct universe
+            // sportsCapitalDays is an alias; if null (no endDate coverage), metric stays null
             const sportsCapitalDays    = walletCapitalDays;
             const sportsPnlPerCapDay   = (sportsPnl != null && sportsCapitalDays != null && sportsCapitalDays > 0)
               ? sportsPnl / sportsCapitalDays : null;
+            // annualizedSportsROIC = sportsPnlPerCapDay × 365 (dimensionless rate, 1/day × 365)
+            // Computed server-side so UI doesn't need to re-derive it
+            const annualizedSportsROIC = sportsPnlPerCapDay != null ? sportsPnlPerCapDay * 365 : null;
             // Also expose gross notional for reference (not used in proxy)
             const sportsGrossNotional  = seriesRows.reduce((s,r)=>s+(r.grossNotional??0),0);
             // sportsTradeShare: fraction of total trades that are S4 sports trades (reuse totalTrades_)
@@ -1376,8 +1381,10 @@ export function registerRoutes(httpServer: Server, app: Express) {
               capitalDaysHighConf:              walletCapDaysHigh,
               sportsPnl,
               sportsPnlPerCapitalDay:           sportsPnlPerCapDay,
-              pnlPerCapitalDay:                 sportsPnlPerCapDay, // replaced: was totalPnl/sportsCapDays (semantic bug)
+              annualizedSportsROIC,
+              pnlPerCapitalDay:                 sportsPnlPerCapDay,
               sportsTradeShare,
+              sportsGrossNotional:              sportsGrossNotional || null,
               pnlMixedWarning,
               resolutionBuckets:                globalBuckets,
 
