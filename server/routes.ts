@@ -553,6 +553,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
   // GET /api/wallets/:address
   app.get("/api/wallets/:address", async (req, res) => {
     const { address } = req.params;
+    if (!address?.startsWith("0x")) return res.status(400).json({ error: "Wallet not found" });
     let wallet = storage.getWallet(address);
 
     if (!wallet) {
@@ -761,6 +762,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const results = await Promise.all(
         sportsArbers.slice(0, 20).map(async (wallet) => {
           try {
+            if (!wallet.address?.startsWith("0x")) return null;
             const trades = await fetchWalletTrades(wallet.address, 200);
             const nearExpiryTrades = trades.filter(t => {
               const title = (t.title ?? "").toLowerCase();
@@ -850,6 +852,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const results = await Promise.all(
         s2Wallets.slice(0, 30).map(async (wallet) => {
           try {
+            if (!wallet.address?.startsWith("0x")) return null;
             const rawTrades = await fetchWalletTrades(wallet.address, 300);
             // Enrich with endDate from gamma market API (cached)
             const enriched = await enrichTradesWithEndDate(rawTrades);
@@ -995,6 +998,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
       const results = await Promise.all(
         s4Candidates.slice(0, 25).map(async (wallet) => {
           try {
+            // Guard: skip wallets without valid 0x address
+            if (!wallet.address?.startsWith("0x")) return null;
             const [trades, closedPositions] = await Promise.all([
               fetchWalletTrades(wallet.address, 500),
               fetchClosedPositionsForChart(wallet.address).catch(() => [] as any[]),
