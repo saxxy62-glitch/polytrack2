@@ -766,7 +766,16 @@ export function registerRoutes(httpServer: Server, app: Express) {
         const chunk = await Promise.all(s3Batch.slice(i, i + 5).map(async (wallet) => {
           try {
             if (!wallet.address?.startsWith("0x")) return null;
-            const trades = await fetchWalletTrades(wallet.address, 200);
+            const rawTrades = await fetchWalletTrades(wallet.address, 200);
+            // Enrich with endDate for TTE distribution (same pipeline as S2)
+            const enriched = await enrichTradesWithEndDate(rawTrades);
+            const trades = enriched.map(t => {
+              if (t.endDate) return t;
+              const sportsEnd = estimateEndDateForSports(t.title ?? "", t.timestamp ?? 0);
+              if (sportsEnd) return { ...t, endDate: sportsEnd };
+              const shortEnd = estimateEndDateFromTitle(t.title ?? "", t.timestamp ?? 0);
+              return { ...t, endDate: shortEnd ?? undefined };
+            });
             const nearExpiryTrades = trades.filter(t => {
               const title = (t.title ?? "").toLowerCase();
               return t.side === "BUY" && (t.price ?? 0) > 0.93
