@@ -1053,7 +1053,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
                   endDates: [],
                   endTsData: [] as Array<{ ts: number; source: string; confidence: string }>,
                   notionals: [] as number[],
-                  pnlSum: 0,
+                  // pnlSum removed — RawTrade has no profit field
                   sampleSlugs: new Set(),
                   sampleTitle: t.title ?? "",
                 });
@@ -1075,8 +1075,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
                 s.sellNotional  += (t.size ?? 0);
                 s.sellPriceSum  += (t.price ?? 0);
               }
-              // Accumulate per-trade PnL into series (same universe as capitalDays)
-              s.pnlSum += (t.profit ?? (t as any).pnl ?? 0);
+              // Note: t.profit / t.pnl don't exist in RawTrade — pnl is estimated at wallet level
               const tradeTsUnix = t.timestamp ?? 0;
               s.timestamps.push(tradeTsUnix);
               let endTs: number | null = null;
@@ -1187,7 +1186,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
                 capitalDays: capitalDays||null,
                 capitalDaysHighConf: capitalDaysHighConf||null,
                 resolutionBuckets: rb,
-                sportsPnl: s.pnlSum || null,
+                sportsPnl: null, // RawTrade has no profit field; computed at wallet level via notionalShare proxy
                 sampleSlugs: [...s.sampleSlugs].slice(0,3),
               };
             }).sort((a, b) => b.grossNotional - a.grossNotional);
@@ -1212,15 +1211,30 @@ export function registerRoutes(httpServer: Server, app: Express) {
             // ── Wallet-level time aggregates ──────────────────────────
             const walletCapitalDays    = seriesRows.reduce((s,r)=>s+(r.capitalDays??0),0)||null;
             const walletCapDaysHigh    = seriesRows.reduce((s,r)=>s+(r.capitalDaysHighConf??0),0)||null;
-            // sportsPnl: PnL from trades that entered the S4 series universe only
-            // Numerator and denominator now live in the same universe (fixes semantic bug)
-            const sportsPnl            = seriesRows.reduce((s,r)=>s+(r.sportsPnl??0),0)||null;
-            const sportsPnlPerCapDay   = (sportsPnl != null && walletCapitalDays != null && walletCapitalDays > 0)
-              ? sportsPnl / walletCapitalDays : null;
+            // ── sportsPnl proxy ───────────────────────────────────────────────────────
+            // RawTrade has no profit field → we estimate sportsPnl via notional share proxy:
+            //   sportsPnl_est = totalPnl × (sportsGrossNotional / wallet.totalVolume)
+            // Assumption: PnL/notional ratio is uniform across categories — this may be wrong
+            // (sports can have much higher ROI per dollar than high-volume crypto trades).
+            // Hence: denominator = sportsCapitalDays only (not walletCapitalDays),
+            //        warning threshold = 50% (not 30%) — below 50% the proxy is too crude.
+            const sportsGrossNotional  = seriesRows.reduce((s,r)=>s+(r.grossNotional??0),0);
+            const walletTotalVolume    = (wallet as any).totalVolume ?? (wallet as any).volume ?? sportsGrossNotional;
+            const sportsNotionalShare  = walletTotalVolume > 0 ? sportsGrossNotional / walletTotalVolume : null;
+            const walletTotalPnl       = (wallet as any).totalPnl ?? (wallet as any).pnl ?? 0;
+            // Only compute proxy when we have a real totalVolume to anchor against
+            const sportsPnl            = (sportsNotionalShare != null && walletTotalVolume !== sportsGrossNotional && walletTotalPnl !== 0)
+              ? walletTotalPnl * sportsNotionalShare : null;
+            // Denominator: sportsCapitalDays only — keeps numerator/denominator in same universe
+            const sportsCapitalDays    = walletCapitalDays; // already computed from seriesRows only
+            const sportsPnlPerCapDay   = (sportsPnl != null && sportsCapitalDays != null && sportsCapitalDays > 0)
+              ? sportsPnl / sportsCapitalDays : null;
             // sportsTradeShare: fraction of total trades that are S4 sports trades
             const totalTrades          = (wallet as any).totalTrades ?? (wallet as any).tradeCount ?? sportsTrades.length;
             const sportsTradeShare     = totalTrades > 0 ? sportsTrades.length / totalTrades : null;
-            const pnlMixedWarning      = sportsTradeShare != null && sportsTradeShare < 0.30;
+            // Warning at 50% (not 30%): below 50% sportsShare the notionalShare proxy
+            // can be off by 5-10x due to differing PnL/notional ratios across categories
+            const pnlMixedWarning      = sportsTradeShare != null && sportsTradeShare < 0.50;
             const globalBuckets = {under1d:0,d1_to_7:0,d7_to_30:0,d30_to_90:0,over90d:0,unknown:0};
             for (const r of seriesRows) {
               const b = r.resolutionBuckets;
