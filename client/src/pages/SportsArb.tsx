@@ -207,3 +207,36 @@ export default function SportsArb() {
                       ${(w.s3Score??0) >= topScore*0.7 ? "bg-green/10 text-green" :
                         (w.s3Score??0) >= topScore*0.4 ? "bg-yellow/10 text-yellow" :
                         "bg-surface-offset text-muted-foreg
+"bg-surface-offset text-muted-foreground"}`}>
+              {w.s3Score ?? "—"}
+            </span>
+          </td>
+          <td className="px-3 py-2">
+            <Link href={`/wallet/${w.address}`} className="text-cyan hover:text-cyan/80 font-medium">
+              {w.name || w.address.slice(0, 10)}
+            </Link>
+          </td>
+          <td className="px-3 py-2 font-mono">
+            <span className={`cursor-help ${(w.winRate??0)>=1?"text-green":(w.winRate??0)>=0.8?"text-yellow":"text-orange"}`}
+              title={`${Math.round((w.winRate??0)*100)}% WR`}>
+              {((w.winRate ?? 0) * 100).toFixed(0)}%
+            </span>
+          </td>
+          <td className="px-3 py-2 font-mono">¢{((w.avgBuyPrice ?? 0) * 100).toFixed(0)}</td>
+          <td className="px-3 py-2 font-mono text-orange font-semibold">{w.nearExpiryCount}</td>
+          <td className="px-3 py-2 font-mono">{w.priceBuckets?.["0.97-0.99"] ?? 0}</td>
+          <td className="px-3 py-2 font-mono text-red-400 font-semibold">{w.priceBuckets?.["0.99+"] ?? 0}</td>
+          <td className="px-3 py-2 font-mono text-muted-foreground">
+            {w.sportsTradeShare != null ? `${Math.round(w.sportsTradeShare * 100)}%` : "—"}
+          </td>
+          <td className="px-3 py-2 font-mono">{fmtK(w.nearExpiryVolume ?? 0)}</td>
+          <td className="px-3 py-2 font-mono text-green">{fmtK(w.totalPnl ?? 0)}</td>
+        </tr>
+      ))}
+      </tbody>
+    </table>
+  )}
+  </div>
+  </div>
+);
+}
