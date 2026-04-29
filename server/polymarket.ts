@@ -166,9 +166,12 @@ export async function fetchClosedPositionsPage(
 }
 
 // Fetch up to 5 pages of closed positions for PNL curve (250 data points max)
+// Fetch up to 5 pages of closed positions for PNL curve (250 data points max)
 export async function fetchClosedPositionsForChart(address: string): Promise<ClosedPosition[]> {
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
   const all: ClosedPosition[] = [];
   for (let offset = 0; offset < 250; offset += 50) {
+    if (offset > 0) await sleep(300);
     const batch = await fetchClosedPositionsPage(address, 50, offset);
     if (batch.length === 0) break;
     all.push(...batch);
