@@ -230,7 +230,7 @@ export default function SportsArb() {
                       {((w.winRate ?? 0) * 100).toFixed(0)}%
                     </span>
                   </td>
-                  <td className="px-3 py-2 font-mono">¢{((w.avgBuyPrice ?? 0) * 100).toFixed(0)}¢
+                  <td className="px-3 py-2 font-mono">{((w.avgBuyPrice ?? 0) * 100).toFixed(0)}¢
                   <td className="px-3 py-2 font-mono text-orange font-semibold">{w.nearExpiryCount}</td>
                   <td className="px-3 py-2 font-mono">{w.priceBuckets?.["0.97-0.99"] ?? 0}</td>
                   <td className="px-3 py-2 font-mono text-red-400 font-semibold">{w.priceBuckets?.["0.99+"] ?? 0}</td>
