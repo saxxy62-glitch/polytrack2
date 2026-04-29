@@ -105,8 +105,8 @@ export default function SportsArb() {
           { label: "S3 кошельков",        value: String(summary.walletsWithNearExpiry ?? "—"),  icon: <Zap className="w-4 h-4 text-orange" /> },
           { label: "Near-expiry трейдов", value: totalNearExpiry.toLocaleString(),               icon: <TrendingUp className="w-4 h-4 text-green" /> },
           { label: "Объём near-expiry",   value: fmtK(totalVolume),                              icon: <Target className="w-4 h-4 text-cyan" /> },
-          { label: "Median Avg Buy¢", value: medAvgBuy != null ? `¢${medAvgBuy.toFixed(0)}` : "—", icon: <Zap className="w-4 h-4 text-yellow" /> },
-          { label: "Median Near-exp", value: medNearExp != null ? String(Math.round(medNearExp)) : "—", icon: <Target className="w-4 h-4 text-orange" /> },
+          { label: "Median Avg Buy¢",     value: medAvgBuy != null ? `¢${medAvgBuy.toFixed(0)}` : "—", icon: <Zap className="w-4 h-4 text-yellow" /> },
+          { label: "Median Near-exp",     value: medNearExp != null ? String(Math.round(medNearExp)) : "—", icon: <Target className="w-4 h-4 text-orange" /> },
         ].map(({ label, value, icon }) => (
           <div key={label} className="bg-surface-1 border border-border rounded-lg p-3 flex items-center gap-2">
             {icon}
@@ -142,7 +142,7 @@ export default function SportsArb() {
             <span className="text-[10px] font-normal text-muted-foreground">requires endDate enrichment</span>
           </h2>
           <p className="text-xs text-muted-foreground mb-3">
-            <span className="text-red-400 font-medium">&lt;30s</span> = нужна коллокация{" · "}
+            <span className="text-red-400 font-medium">&lt;30s</span> = нужна коллокация &middot;{" "}
             <span className="text-orange font-medium">30s–2m</span> = VPS достаточно
           </p>
           {tteData.every(e => e.count === 0)
@@ -206,5 +206,4 @@ export default function SportsArb() {
                     <span className={`text-[11px] px-1.5 py-0.5 rounded font-semibold
                       ${(w.s3Score??0) >= topScore*0.7 ? "bg-green/10 text-green" :
                         (w.s3Score??0) >= topScore*0.4 ? "bg-yellow/10 text-yellow" :
-                        "bg-surface-offset text-muted-foreground"}`}>
-    
+                        "bg-surface-offset text-muted-foreg
