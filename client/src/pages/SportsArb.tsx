@@ -82,11 +82,7 @@ export default function SportsArb() {
 
   // Median KPIs
   // Normalize: Polymarket prices are 0–1; if stored >1 it's a data artifact
-  const normAvgBuy = (v: number): number | null => v <= 1 ? v * 100 : v <= 100 ? v : null;
-  const medAvgBuy  = median(
-    arbers.map((w: any) => normAvgBuy(w.avgBuyPrice ?? 0))
-          .filter((v): v is number => v !== null && v > 0 && v <= 100)
-  );
+  const medAvgBuy = median(arbers.filter((w: any) => w.avgBuyPrice != null).map((w: any) => w.avgBuyPrice * 100));
   const medNearExp  = median(arbers.filter((w:any) => w.nearExpiryCount != null).map((w:any) => w.nearExpiryCount));
 
   return (
